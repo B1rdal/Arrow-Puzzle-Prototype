@@ -1,0 +1,271 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 078aa1fe4bba42fb9e6d94da537db556, type: 3}
+  m_Name: PathArrowLevel_15x15_Hard_01
+  m_EditorClassIdentifier: 
+  width: 15
+  height: 15
+  arrows:
+  - id: Seed A
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 1, y: 2}
+    - {x: 1, y: 1}
+    - {x: 2, y: 1}
+    - {x: 2, y: 0}
+  - id: Seed B
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 12, y: 12}
+    - {x: 13, y: 12}
+    - {x: 13, y: 13}
+    - {x: 14, y: 13}
+  - id: Seed C
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 5, y: 13}
+    - {x: 6, y: 13}
+    - {x: 6, y: 14}
+  - id: Seed D
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 2, y: 10}
+    - {x: 1, y: 10}
+    - {x: 1, y: 9}
+    - {x: 0, y: 9}
+  - id: Gate 01
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 9, y: 4}
+    - {x: 8, y: 4}
+    - {x: 8, y: 3}
+    - {x: 7, y: 3}
+    - {x: 7, y: 4}
+  - id: Gate 02
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 0, y: 1}
+    - {x: 0, y: 0}
+    - {x: 1, y: 0}
+  - id: Gate 03
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 6, y: 6}
+    - {x: 6, y: 5}
+    - {x: 5, y: 5}
+  - id: Gate 04
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 8, y: 7}
+    - {x: 8, y: 8}
+    - {x: 9, y: 8}
+    - {x: 9, y: 7}
+    - {x: 10, y: 7}
+    - {x: 10, y: 8}
+  - id: Gate 05
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 3, y: 3}
+    - {x: 3, y: 2}
+    - {x: 2, y: 2}
+    - {x: 2, y: 3}
+  - id: Gate 06
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 10, y: 10}
+    - {x: 10, y: 9}
+    - {x: 9, y: 9}
+  - id: Gate 07
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 13, y: 0}
+    - {x: 14, y: 0}
+    - {x: 14, y: 1}
+    - {x: 13, y: 1}
+    - {x: 13, y: 2}
+  - id: Gate 08
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 1, y: 4}
+    - {x: 0, y: 4}
+    - {x: 0, y: 5}
+  - id: Gate 09
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 13, y: 6}
+    - {x: 13, y: 5}
+    - {x: 12, y: 5}
+    - {x: 12, y: 6}
+  - id: Gate 10
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 10, y: 4}
+    - {x: 10, y: 3}
+    - {x: 9, y: 3}
+    - {x: 9, y: 2}
+    - {x: 8, y: 2}
+    - {x: 8, y: 1}
+    - {x: 9, y: 1}
+  - id: Gate 11
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 12, y: 14}
+    - {x: 11, y: 14}
+    - {x: 11, y: 13}
+    - {x: 12, y: 13}
+  - id: Gate 12
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 0, y: 12}
+    - {x: 0, y: 11}
+    - {x: 1, y: 11}
+    - {x: 1, y: 12}
+    - {x: 2, y: 12}
+  - id: Gate 13
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 10, y: 5}
+    - {x: 9, y: 5}
+    - {x: 9, y: 6}
+    - {x: 8, y: 6}
+    - {x: 8, y: 5}
+    - {x: 7, y: 5}
+  - id: Gate 14
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 6, y: 7}
+    - {x: 6, y: 8}
+    - {x: 5, y: 8}
+    - {x: 5, y: 9}
+    - {x: 6, y: 9}
+    - {x: 6, y: 10}
+  - id: Gate 15
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 2, y: 14}
+    - {x: 0, y: 14}
+    - {x: 0, y: 13}
+    - {x: 1, y: 13}
+  - id: Gate 16
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 10, y: 6}
+    - {x: 11, y: 6}
+    - {x: 11, y: 4}
+  - id: Gate 17
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 11, y: 7}
+    - {x: 11, y: 8}
+    - {x: 12, y: 8}
+    - {x: 12, y: 9}
+    - {x: 11, y: 9}
+  - id: Gate 18
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 5, y: 2}
+    - {x: 4, y: 2}
+    - {x: 4, y: 3}
+    - {x: 5, y: 3}
+    - {x: 5, y: 4}
+    - {x: 6, y: 4}
+    - {x: 6, y: 3}
+  - id: Gate 19
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 4, y: 11}
+    - {x: 3, y: 11}
+    - {x: 3, y: 10}
+    - {x: 4, y: 10}
+    - {x: 4, y: 9}
+    - {x: 3, y: 9}
+    - {x: 3, y: 8}
+  - id: Gate 20
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 13, y: 11}
+    - {x: 14, y: 11}
+    - {x: 14, y: 12}
+  - id: Gate 21
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 14, y: 2}
+    - {x: 14, y: 3}
+    - {x: 13, y: 3}
+    - {x: 13, y: 4}
+    - {x: 14, y: 4}
+    - {x: 14, y: 5}
+  - id: Gate 22
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 6, y: 0}
+    - {x: 5, y: 0}
+    - {x: 5, y: 1}
+    - {x: 6, y: 1}
+    - {x: 6, y: 2}
+    - {x: 7, y: 2}
+  - id: Gate 23
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 11, y: 1}
+    - {x: 10, y: 1}
+    - {x: 10, y: 2}
+    - {x: 11, y: 2}
+  - id: Gate 24
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 10, y: 13}
+    - {x: 9, y: 13}
+    - {x: 9, y: 14}
+    - {x: 10, y: 14}
+  - id: Gate 25
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 12, y: 10}
+    - {x: 11, y: 10}
+    - {x: 11, y: 11}
+    - {x: 10, y: 11}
+    - {x: 10, y: 12}
+    - {x: 11, y: 12}
+  - id: Gate 26
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 7, y: 1}
+    - {x: 7, y: 0}
+    - {x: 10, y: 0}
+  - id: Gate 27
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 12, y: 4}
+    - {x: 12, y: 3}
+    - {x: 11, y: 3}
+  - id: Gate 28
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 2, y: 13}
+    - {x: 3, y: 13}
+    - {x: 3, y: 14}
+    - {x: 4, y: 14}
+  - id: Gate 29
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 1, y: 5}
+    - {x: 2, y: 5}
+    - {x: 2, y: 6}
+    - {x: 1, y: 6}
+    - {x: 1, y: 7}
+  - id: Gate 30
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 14, y: 6}
+    - {x: 14, y: 7}
+    - {x: 13, y: 7}

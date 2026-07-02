@@ -1,11 +1,20 @@
+/*
+Summary:
+BoardCameraController handles board navigation. It controls orthographic zoom,
+binds manually assigned zoom UI, supports mouse/touch pan and mobile pinch zoom,
+and clamps movement so the view stays near the puzzle board.
+*/
+
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-// Handles orthographic camera zoom, reset, and drag-pan clamped to the path-arrow board bounds.
 public class BoardCameraController : MonoBehaviour
 {
+    private static readonly List<RaycastResult> UiRaycastResults = new List<RaycastResult>();
+
     [Header("References")]
     [SerializeField] private Camera targetCamera;
     [SerializeField] private GameManager boardManager;
@@ -18,59 +27,59 @@ public class BoardCameraController : MonoBehaviour
     [Min(0.5f)]
     [SerializeField] private float maxZoomSize = 8f;
     [SerializeField] private bool allowMouseWheelZoom = true;
+    [SerializeField] private bool scaleMaxZoomSizeWithScreenAspect = true;
+    [SerializeField] private Vector2 maxZoomReferenceResolution = new Vector2(1080f, 1920f);
 
     [Header("Drag Limits")]
     [Min(0f)]
     [SerializeField] private float boardPadding = 0.75f;
     [SerializeField] private bool clampCameraToBoard = true;
 
-    [Header("Manual Controls")]
-    [SerializeField] private bool useManualControls = false;
+    [Header("Mobile Touch")]
+    [SerializeField] private bool allowTouchControls = true;
+    [SerializeField] private bool allowOneFingerPan = true;
+    [SerializeField] private bool allowPinchZoom = true;
+    [Min(0f)]
+    [SerializeField] private float touchPanStartThresholdPixels = 6f;
+    [Range(0.25f, 2f)]
+    [SerializeField] private float pinchZoomSensitivity = 1f;
+
+    [Header("Zoom UI")]
     [SerializeField] private Button manualZoomInButton = null;
     [SerializeField] private Slider manualZoomSlider = null;
     [SerializeField] private Button manualZoomOutButton = null;
     [SerializeField] private Button manualResetButton = null;
-
-    [Header("Runtime Controls")]
-    [SerializeField] private bool createRuntimeButtons = true;
     [SerializeField] private bool resetButtonActiveInEditor = true;
-    [SerializeField] private Vector2 buttonSize = new Vector2(110f, 46f);
-    [SerializeField] private Vector2 buttonMargin = new Vector2(18f, 18f);
-    [SerializeField] private Vector2 sliderSize = new Vector2(34f, 220f);
-    [SerializeField] private Vector2 sliderMargin = new Vector2(18f, 18f);
-    [SerializeField] private Vector2 zoomSignSize = new Vector2(42f, 42f);
-    [SerializeField] private float zoomSignSpacing = 6f;
 
     private Slider zoomSlider;
-    private Button createdResetButton;
     private Vector3 defaultCameraPosition;
     private float defaultOrthographicSize;
     private bool hasDefaultView;
     private bool isDragging;
     private bool ignoreZoomSliderEvent;
+    private bool isTouchDragging;
+    private bool isPinching;
+    private bool ignoreSingleTouchUntilReleased;
+    private int activePanFingerId = -1;
+    private float lastPinchDistance;
+    private float lastEffectiveMaxZoomSize = -1f;
+    private Vector2Int lastZoomLimitScreenSize = new Vector2Int(-1, -1);
+    private Vector2 panStartScreenPosition;
     private Vector3 lastPointerWorldPosition;
 
     private void Awake()
     {
-        if (targetCamera == null)
-        {
-            targetCamera = GetComponent<Camera>();
-        }
-
-        if (targetCamera == null)
-        {
-            targetCamera = Camera.main;
-        }
-
-        if (boardManager == null)
-        {
-            boardManager = FindFirstObjectByType<GameManager>();
-        }
+        ResolveReferences();
     }
 
     private void Start()
     {
         StartCoroutine(InitializeAfterSceneStart());
+    }
+
+    private void OnDisable()
+    {
+        UnbindManualControls();
     }
 
     private IEnumerator InitializeAfterSceneStart()
@@ -85,24 +94,31 @@ public class BoardCameraController : MonoBehaviour
         }
 
         targetCamera.orthographic = true;
+        ApplyZoomLimitsIfNeeded(true);
         SaveDefaultView();
         ClampCameraPosition();
-
-        if (useManualControls)
-        {
-            BindManualControls();
-        }
-        else if (createRuntimeButtons)
-        {
-            CreateRuntimeControls();
-        }
-
+        BindManualControls();
         UpdateZoomSlider();
     }
 
     private void Update()
     {
-        HandleDrag();
+        ApplyZoomLimitsIfNeeded(false);
+
+        if (PauseMenuUI.IsGamePaused)
+        {
+            ResetPointerState();
+            return;
+        }
+
+        if (allowTouchControls && Input.touchCount > 0)
+        {
+            HandleTouchGestures();
+            return;
+        }
+
+        ResetTouchState();
+        HandleMouseDrag();
 
         if (allowMouseWheelZoom)
         {
@@ -132,10 +148,28 @@ public class BoardCameraController : MonoBehaviour
             SaveDefaultView();
         }
 
-        targetCamera.orthographicSize = maxZoomSize;
+        targetCamera.orthographicSize = defaultOrthographicSize;
         targetCamera.transform.position = defaultCameraPosition;
         ClampCameraPosition();
         UpdateZoomSlider();
+    }
+
+    private void ResolveReferences()
+    {
+        if (targetCamera == null)
+        {
+            targetCamera = GetComponent<Camera>();
+        }
+
+        if (targetCamera == null)
+        {
+            targetCamera = Camera.main;
+        }
+
+        if (boardManager == null)
+        {
+            boardManager = FindFirstObjectByType<GameManager>();
+        }
     }
 
     private void ZoomBySteps(float steps)
@@ -145,10 +179,12 @@ public class BoardCameraController : MonoBehaviour
             return;
         }
 
+        float effectiveMaxZoomSize = GetEffectiveMaxZoomSize();
+
         SetZoomSize(Mathf.Clamp(
             targetCamera.orthographicSize - steps * zoomStep,
             minZoomSize,
-            maxZoomSize));
+            effectiveMaxZoomSize));
     }
 
     private void SetZoomSize(float orthographicSize)
@@ -158,7 +194,7 @@ public class BoardCameraController : MonoBehaviour
             return;
         }
 
-        targetCamera.orthographicSize = Mathf.Clamp(orthographicSize, minZoomSize, maxZoomSize);
+        targetCamera.orthographicSize = Mathf.Clamp(orthographicSize, minZoomSize, GetEffectiveMaxZoomSize());
         ClampCameraPosition();
         UpdateZoomSlider();
     }
@@ -170,11 +206,65 @@ public class BoardCameraController : MonoBehaviour
             return;
         }
 
-        float size = Mathf.Lerp(maxZoomSize, minZoomSize, Mathf.Clamp01(zoom01));
+        float effectiveMaxZoomSize = GetEffectiveMaxZoomSize();
+        float size = Mathf.Lerp(effectiveMaxZoomSize, minZoomSize, Mathf.Clamp01(zoom01));
         SetZoomSize(size);
     }
 
-    private void HandleDrag()
+    private float GetEffectiveMaxZoomSize()
+    {
+        float safeMaxZoomSize = Mathf.Max(minZoomSize, maxZoomSize);
+
+        if (!scaleMaxZoomSizeWithScreenAspect ||
+            maxZoomReferenceResolution.x <= 0f ||
+            maxZoomReferenceResolution.y <= 0f ||
+            Screen.width <= 0 ||
+            Screen.height <= 0)
+        {
+            return safeMaxZoomSize;
+        }
+
+        float referenceAspect = maxZoomReferenceResolution.x / maxZoomReferenceResolution.y;
+        float currentAspect = targetCamera != null && targetCamera.aspect > 0f
+            ? targetCamera.aspect
+            : (float)Screen.width / Screen.height;
+
+        if (currentAspect <= 0.0001f)
+        {
+            return safeMaxZoomSize;
+        }
+
+        // Orthographic size controls vertical view. This keeps the zoomed-out horizontal view
+        // matching the reference device where Max Zoom Size was tuned.
+        float scaledMaxZoomSize = safeMaxZoomSize * (referenceAspect / currentAspect);
+        return Mathf.Max(minZoomSize, scaledMaxZoomSize);
+    }
+
+    private void ApplyZoomLimitsIfNeeded(bool force)
+    {
+        if (targetCamera == null)
+        {
+            return;
+        }
+
+        float effectiveMaxZoomSize = GetEffectiveMaxZoomSize();
+        Vector2Int screenSize = new Vector2Int(Screen.width, Screen.height);
+
+        if (!force &&
+            Mathf.Approximately(effectiveMaxZoomSize, lastEffectiveMaxZoomSize) &&
+            screenSize == lastZoomLimitScreenSize)
+        {
+            return;
+        }
+
+        targetCamera.orthographicSize = Mathf.Clamp(targetCamera.orthographicSize, minZoomSize, effectiveMaxZoomSize);
+        ClampCameraPosition();
+        UpdateZoomSlider();
+        lastEffectiveMaxZoomSize = effectiveMaxZoomSize;
+        lastZoomLimitScreenSize = screenSize;
+    }
+
+    private void HandleMouseDrag()
     {
         if (targetCamera == null)
         {
@@ -183,13 +273,14 @@ public class BoardCameraController : MonoBehaviour
 
         if (PathArrow.IsAnyArrowHeld)
         {
+            // Arrow hold-preview has priority over board dragging.
             isDragging = false;
             return;
         }
 
         if (Input.GetMouseButtonDown(0))
         {
-            if (IsPointerOverUi() || IsPointerOverArrow())
+            if (IsPointerOverUi(Input.mousePosition) || IsPointerOverArrow(Input.mousePosition))
             {
                 return;
             }
@@ -215,6 +306,153 @@ public class BoardCameraController : MonoBehaviour
         lastPointerWorldPosition = GetPointerWorldPosition(Input.mousePosition);
     }
 
+    private void HandleTouchGestures()
+    {
+        if (targetCamera == null)
+        {
+            ResetTouchState();
+            return;
+        }
+
+        if (PathArrow.IsAnyArrowHeld)
+        {
+            // Arrow hold-preview has priority over mobile board gestures too.
+            ResetTouchState();
+            return;
+        }
+
+        if (Input.touchCount >= 2 && allowPinchZoom)
+        {
+            HandlePinchZoom();
+            return;
+        }
+
+        if (Input.touchCount == 1 && allowOneFingerPan)
+        {
+            HandleSingleTouchPan();
+            return;
+        }
+
+        ResetTouchState();
+    }
+
+    private void HandleSingleTouchPan()
+    {
+        Touch touch = Input.GetTouch(0);
+
+        if (ignoreSingleTouchUntilReleased)
+        {
+            if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+            {
+                ignoreSingleTouchUntilReleased = false;
+            }
+
+            return;
+        }
+
+        if (touch.phase == TouchPhase.Began)
+        {
+            if (IsPointerOverUi(touch.position) || IsPointerOverArrow(touch.position))
+            {
+                isTouchDragging = false;
+                activePanFingerId = -1;
+                return;
+            }
+
+            isTouchDragging = false;
+            activePanFingerId = touch.fingerId;
+            panStartScreenPosition = touch.position;
+            lastPointerWorldPosition = GetPointerWorldPosition(touch.position);
+            return;
+        }
+
+        if (activePanFingerId != touch.fingerId)
+        {
+            return;
+        }
+
+        if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+        {
+            isTouchDragging = false;
+            activePanFingerId = -1;
+            return;
+        }
+
+        if (!isTouchDragging)
+        {
+            if ((touch.position - panStartScreenPosition).sqrMagnitude < touchPanStartThresholdPixels * touchPanStartThresholdPixels)
+            {
+                return;
+            }
+
+            isTouchDragging = true;
+            lastPointerWorldPosition = GetPointerWorldPosition(touch.position);
+        }
+
+        Vector3 currentPointerWorldPosition = GetPointerWorldPosition(touch.position);
+        Vector3 movement = lastPointerWorldPosition - currentPointerWorldPosition;
+        targetCamera.transform.position += new Vector3(movement.x, movement.y, 0f);
+        ClampCameraPosition();
+
+        lastPointerWorldPosition = GetPointerWorldPosition(touch.position);
+    }
+
+    private void HandlePinchZoom()
+    {
+        Touch firstTouch = Input.GetTouch(0);
+        Touch secondTouch = Input.GetTouch(1);
+
+        if (!isPinching)
+        {
+            if (IsPointerOverUi(firstTouch.position) ||
+                IsPointerOverUi(secondTouch.position) ||
+                IsPointerOverArrow(firstTouch.position) ||
+                IsPointerOverArrow(secondTouch.position))
+            {
+                ResetTouchState();
+                ignoreSingleTouchUntilReleased = true;
+                return;
+            }
+
+            isPinching = true;
+            isTouchDragging = false;
+            activePanFingerId = -1;
+            lastPinchDistance = Vector2.Distance(firstTouch.position, secondTouch.position);
+        }
+
+        if (firstTouch.phase == TouchPhase.Ended ||
+            firstTouch.phase == TouchPhase.Canceled ||
+            secondTouch.phase == TouchPhase.Ended ||
+            secondTouch.phase == TouchPhase.Canceled)
+        {
+            ResetTouchState();
+            ignoreSingleTouchUntilReleased = true;
+            return;
+        }
+
+        float currentDistance = Vector2.Distance(firstTouch.position, secondTouch.position);
+
+        if (lastPinchDistance <= 0.01f || currentDistance <= 0.01f)
+        {
+            lastPinchDistance = currentDistance;
+            return;
+        }
+
+        Vector2 pinchCenter = (firstTouch.position + secondTouch.position) * 0.5f;
+        Vector3 worldPointBeforeZoom = GetPointerWorldPosition(pinchCenter);
+        float zoomScale = Mathf.Pow(lastPinchDistance / currentDistance, pinchZoomSensitivity);
+
+        SetZoomSize(targetCamera.orthographicSize * zoomScale);
+
+        // Keep the board point under the fingers stable while zooming and moving the pinch center.
+        Vector3 worldPointAfterZoom = GetPointerWorldPosition(pinchCenter);
+        Vector3 centerCorrection = worldPointBeforeZoom - worldPointAfterZoom;
+        targetCamera.transform.position += new Vector3(centerCorrection.x, centerCorrection.y, 0f);
+        ClampCameraPosition();
+
+        lastPinchDistance = currentDistance;
+    }
+
     private Vector3 GetPointerWorldPosition(Vector3 screenPosition)
     {
         Vector3 pointer = screenPosition;
@@ -232,6 +470,7 @@ public class BoardCameraController : MonoBehaviour
         Bounds boardBounds = boardManager.GetBoardWorldBounds();
         boardBounds.Expand(new Vector3(boardPadding * 2f, boardPadding * 2f, 0f));
 
+        // Clamp the camera center using the visible orthographic half-size, not just the board bounds.
         float halfHeight = targetCamera.orthographicSize;
         float halfWidth = halfHeight * targetCamera.aspect;
         Vector3 position = targetCamera.transform.position;
@@ -261,19 +500,33 @@ public class BoardCameraController : MonoBehaviour
         hasDefaultView = true;
     }
 
-    private static bool IsPointerOverUi()
+    private static bool IsPointerOverUi(Vector2 screenPosition)
     {
-        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        EventSystem eventSystem = EventSystem.current;
+
+        if (eventSystem == null)
+        {
+            return false;
+        }
+
+        PointerEventData pointerData = new PointerEventData(eventSystem)
+        {
+            position = screenPosition
+        };
+
+        UiRaycastResults.Clear();
+        eventSystem.RaycastAll(pointerData, UiRaycastResults);
+        return UiRaycastResults.Count > 0;
     }
 
-    private bool IsPointerOverArrow()
+    private bool IsPointerOverArrow(Vector2 screenPosition)
     {
         if (targetCamera == null)
         {
             return false;
         }
 
-        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(Input.mousePosition);
+        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(screenPosition);
         Collider2D[] hits = Physics2D.OverlapPointAll(worldPosition);
 
         for (int i = 0; i < hits.Length; i++)
@@ -285,6 +538,25 @@ public class BoardCameraController : MonoBehaviour
         }
 
         return false;
+    }
+
+    private void ResetPointerState()
+    {
+        isDragging = false;
+        ResetTouchState();
+    }
+
+    private void ResetTouchState()
+    {
+        isTouchDragging = false;
+        isPinching = false;
+        activePanFingerId = -1;
+        lastPinchDistance = 0f;
+
+        if (Input.touchCount == 0)
+        {
+            ignoreSingleTouchUntilReleased = false;
+        }
     }
 
     private void BindManualControls()
@@ -306,6 +578,18 @@ public class BoardCameraController : MonoBehaviour
         ApplyResetButtonActiveState();
     }
 
+    private void UnbindManualControls()
+    {
+        if (manualZoomSlider != null)
+        {
+            manualZoomSlider.onValueChanged.RemoveListener(SetZoomFromSlider);
+        }
+
+        UnbindButton(manualZoomInButton, ZoomIn);
+        UnbindButton(manualZoomOutButton, ZoomOut);
+        UnbindButton(manualResetButton, ResetZoom);
+    }
+
     private static void BindButton(Button button, UnityEngine.Events.UnityAction action)
     {
         if (button == null)
@@ -317,243 +601,24 @@ public class BoardCameraController : MonoBehaviour
         button.onClick.AddListener(action);
     }
 
-    private void CreateRuntimeControls()
+    private static void UnbindButton(Button button, UnityEngine.Events.UnityAction action)
     {
-        EnsureEventSystem();
-
-        Canvas canvas = FindFirstObjectByType<Canvas>();
-
-        if (canvas == null)
-        {
-            GameObject canvasObject = new GameObject("CameraControlsCanvas");
-            canvas = canvasObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasObject.AddComponent<CanvasScaler>();
-            canvasObject.AddComponent<GraphicRaycaster>();
-        }
-
-        Vector2 horizontalSliderSize = GetHorizontalSliderSize();
-        float totalWidth = zoomSignSize.x * 2f + horizontalSliderSize.x + zoomSignSpacing * 2f;
-        float totalHeight = Mathf.Max(zoomSignSize.y, horizontalSliderSize.y);
-        RectTransform zoomControls = CreateBottomCenterGroup(canvas.transform, "ZoomControls", new Vector2(totalWidth, totalHeight), sliderMargin.y);
-
-        float zoomOutX = -totalWidth * 0.5f + zoomSignSize.x * 0.5f;
-        float sliderX = zoomOutX + zoomSignSize.x * 0.5f + zoomSignSpacing + horizontalSliderSize.x * 0.5f;
-        float zoomInX = totalWidth * 0.5f - zoomSignSize.x * 0.5f;
-
-        Button zoomOutButton = CreateButton(
-            zoomControls,
-            "ZoomOutButton",
-            "-",
-            new Vector2(zoomOutX, 0f),
-            zoomSignSize,
-            30,
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f));
-        zoomOutButton.onClick.AddListener(ZoomOut);
-
-        zoomSlider = CreateZoomSlider(
-            zoomControls,
-            new Vector2(sliderX, 0f),
-            horizontalSliderSize,
-            Slider.Direction.LeftToRight,
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f));
-        zoomSlider.onValueChanged.AddListener(SetZoomFromSlider);
-        UpdateZoomSlider();
-
-        Button zoomInButton = CreateButton(
-            zoomControls,
-            "ZoomInButton",
-            "+",
-            new Vector2(zoomInX, 0f),
-            zoomSignSize,
-            30,
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f));
-        zoomInButton.onClick.AddListener(ZoomIn);
-
-        float resetOffsetX = sliderMargin.x + zoomSignSize.x + buttonMargin.x;
-        createdResetButton = CreateButton(canvas.transform, "ResetZoomButton", "Reset", new Vector2(-resetOffsetX, buttonMargin.y));
-        createdResetButton.onClick.AddListener(ResetZoom);
-        ApplyResetButtonActiveState();
-    }
-
-    private void ApplyResetButtonActiveState()
-    {
-        Button resetButton = manualResetButton != null ? manualResetButton : createdResetButton;
-
-        if (resetButton == null)
+        if (button == null)
         {
             return;
         }
 
-        resetButton.gameObject.SetActive(resetButtonActiveInEditor);
+        button.onClick.RemoveListener(action);
     }
 
-    private Vector2 GetHorizontalSliderSize()
+    private void ApplyResetButtonActiveState()
     {
-        float width = Mathf.Max(80f, Mathf.Max(sliderSize.x, sliderSize.y));
-        float height = Mathf.Max(24f, Mathf.Min(sliderSize.x, sliderSize.y));
-        return new Vector2(width, height);
-    }
-
-    private static RectTransform CreateBottomCenterGroup(Transform parent, string name, Vector2 size, float bottomOffset)
-    {
-        GameObject groupObject = new GameObject(name);
-        groupObject.transform.SetParent(parent, false);
-
-        RectTransform rectTransform = groupObject.AddComponent<RectTransform>();
-        rectTransform.anchorMin = new Vector2(0.5f, 0f);
-        rectTransform.anchorMax = new Vector2(0.5f, 0f);
-        rectTransform.pivot = new Vector2(0.5f, 0f);
-        rectTransform.sizeDelta = size;
-        rectTransform.anchoredPosition = new Vector2(0f, bottomOffset);
-
-        return rectTransform;
-    }
-
-    private Slider CreateZoomSlider(
-        Transform parent,
-        Vector2 anchoredPosition,
-        Vector2 size,
-        Slider.Direction direction,
-        Vector2 anchor,
-        Vector2 pivot)
-    {
-        GameObject sliderObject = new GameObject("ZoomSlider");
-        sliderObject.transform.SetParent(parent, false);
-
-        RectTransform sliderRect = sliderObject.AddComponent<RectTransform>();
-        sliderRect.anchorMin = anchor;
-        sliderRect.anchorMax = anchor;
-        sliderRect.pivot = pivot;
-        sliderRect.sizeDelta = size;
-        sliderRect.anchoredPosition = anchoredPosition;
-
-        Slider slider = sliderObject.AddComponent<Slider>();
-        slider.minValue = 0f;
-        slider.maxValue = 1f;
-        slider.wholeNumbers = false;
-        slider.direction = direction;
-
-        Image background = CreateSliderImage(sliderObject.transform, "Background", Vector2.zero, Vector2.one, new Color(0.08f, 0.09f, 0.11f, 0.82f));
-
-        GameObject fillArea = new GameObject("Fill Area");
-        fillArea.transform.SetParent(sliderObject.transform, false);
-        RectTransform fillAreaRect = fillArea.AddComponent<RectTransform>();
-        fillAreaRect.anchorMin = Vector2.zero;
-        fillAreaRect.anchorMax = Vector2.one;
-        fillAreaRect.offsetMin = new Vector2(8f, 8f);
-        fillAreaRect.offsetMax = new Vector2(-8f, -8f);
-
-        Image fill = CreateSliderImage(fillArea.transform, "Fill", Vector2.zero, Vector2.one, new Color(0.28f, 0.72f, 1f, 0.95f));
-
-        GameObject handleArea = new GameObject("Handle Slide Area");
-        handleArea.transform.SetParent(sliderObject.transform, false);
-        RectTransform handleAreaRect = handleArea.AddComponent<RectTransform>();
-        handleAreaRect.anchorMin = Vector2.zero;
-        handleAreaRect.anchorMax = Vector2.one;
-        handleAreaRect.offsetMin = new Vector2(0f, 8f);
-        handleAreaRect.offsetMax = new Vector2(0f, -8f);
-
-        Image handle = CreateSliderImage(handleArea.transform, "Handle", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Color.white);
-        RectTransform handleRect = handle.GetComponent<RectTransform>();
-        handleRect.sizeDelta = new Vector2(24f, 24f);
-
-        slider.targetGraphic = handle;
-        slider.fillRect = fill.rectTransform;
-        slider.handleRect = handleRect;
-
-        // Background receives raycasts; the fill is visual only so dragging feels clean.
-        background.raycastTarget = true;
-        fill.raycastTarget = false;
-
-        return slider;
-    }
-
-    private static Image CreateSliderImage(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Color color)
-    {
-        GameObject imageObject = new GameObject(name);
-        imageObject.transform.SetParent(parent, false);
-
-        RectTransform rectTransform = imageObject.AddComponent<RectTransform>();
-        rectTransform.anchorMin = anchorMin;
-        rectTransform.anchorMax = anchorMax;
-        rectTransform.offsetMin = Vector2.zero;
-        rectTransform.offsetMax = Vector2.zero;
-
-        Image image = imageObject.AddComponent<Image>();
-        image.color = color;
-        return image;
-    }
-
-    private Button CreateButton(Transform parent, string name, string label, Vector2 anchoredPosition)
-    {
-        return CreateButton(parent, name, label, anchoredPosition, buttonSize, 22);
-    }
-
-    private Button CreateButton(Transform parent, string name, string label, Vector2 anchoredPosition, Vector2 size, int fontSize)
-    {
-        return CreateButton(
-            parent,
-            name,
-            label,
-            anchoredPosition,
-            size,
-            fontSize,
-            new Vector2(1f, 0f),
-            new Vector2(1f, 0f));
-    }
-
-    private Button CreateButton(
-        Transform parent,
-        string name,
-        string label,
-        Vector2 anchoredPosition,
-        Vector2 size,
-        int fontSize,
-        Vector2 anchor,
-        Vector2 pivot)
-    {
-        GameObject buttonObject = new GameObject(name);
-        buttonObject.transform.SetParent(parent, false);
-
-        RectTransform rectTransform = buttonObject.AddComponent<RectTransform>();
-        rectTransform.anchorMin = anchor;
-        rectTransform.anchorMax = anchor;
-        rectTransform.pivot = pivot;
-        rectTransform.sizeDelta = size;
-        rectTransform.anchoredPosition = anchoredPosition;
-
-        Image image = buttonObject.AddComponent<Image>();
-        image.color = new Color(0.08f, 0.09f, 0.11f, 0.82f);
-
-        Button button = buttonObject.AddComponent<Button>();
-
-        GameObject textObject = new GameObject("Label");
-        textObject.transform.SetParent(buttonObject.transform, false);
-
-        RectTransform textRect = textObject.AddComponent<RectTransform>();
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-
-        Text text = textObject.AddComponent<Text>();
-        text.text = label;
-        text.alignment = TextAnchor.MiddleCenter;
-        text.color = Color.white;
-        text.fontSize = fontSize;
-        text.raycastTarget = false;
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-
-        if (text.font == null)
+        if (manualResetButton == null)
         {
-            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            return;
         }
 
-        return button;
+        manualResetButton.gameObject.SetActive(resetButtonActiveInEditor);
     }
 
     private void UpdateZoomSlider()
@@ -563,25 +628,15 @@ public class BoardCameraController : MonoBehaviour
             return;
         }
 
-        float zoom01 = Mathf.Approximately(maxZoomSize, minZoomSize)
+        float effectiveMaxZoomSize = GetEffectiveMaxZoomSize();
+        float zoom01 = Mathf.Approximately(effectiveMaxZoomSize, minZoomSize)
             ? 0f
-            : Mathf.Clamp01((maxZoomSize - targetCamera.orthographicSize) / (maxZoomSize - minZoomSize));
+            : Mathf.Clamp01((effectiveMaxZoomSize - targetCamera.orthographicSize) / (effectiveMaxZoomSize - minZoomSize));
 
+        // Prevent slider value sync from recursively changing camera zoom.
         ignoreZoomSliderEvent = true;
         zoomSlider.value = zoom01;
         ignoreZoomSliderEvent = false;
-    }
-
-    private static void EnsureEventSystem()
-    {
-        if (EventSystem.current != null)
-        {
-            return;
-        }
-
-        GameObject eventSystemObject = new GameObject("EventSystem");
-        eventSystemObject.AddComponent<EventSystem>();
-        eventSystemObject.AddComponent<StandaloneInputModule>();
     }
 
     private void OnValidate()

@@ -1,7 +1,13 @@
+/*
+Summary:
+PathArrowStyleData is the shared visual style for generated arrows. Assign one to
+GameManager to control common arrow color, blocked feedback, head shape, and hold
+preview beam settings from a single asset.
+*/
+
 using UnityEngine;
 
-// Shared visual settings for generated path arrows.
-[CreateAssetMenu(fileName = "PathArrowStyleData", menuName = "Arrow Escape/Path Arrow Style Data")]
+[CreateAssetMenu(fileName = "PathArrowStyleData", menuName = "Arrow Escape/Arrow Style Data")]
 public class PathArrowStyleData : ScriptableObject
 {
     [Header("Colors")]

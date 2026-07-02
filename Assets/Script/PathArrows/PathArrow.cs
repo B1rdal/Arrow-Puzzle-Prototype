@@ -1,11 +1,18 @@
+/*
+Summary:
+PathArrow is one runtime arrow on the board. It draws the line and arrow head,
+handles press/hold/release input, shows preview and blocked feedback, then plays the
+escape/fade animation after GameManager approves the move.
+*/
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(LineRenderer))]
-// Runtime arrow object: renders the path/head, receives clicks, plays feedback, and fades after escape.
 public class PathArrow : MonoBehaviour
 {
+    // BoardCameraController checks this so dragging the board does not fight arrow holding.
     private static int activeHoldPreviewCount;
 
     [Header("Rendering")]
@@ -131,7 +138,7 @@ public class PathArrow : MonoBehaviour
 
     public void HandlePressStarted()
     {
-        if (!inputEnabled || manager == null || IsAnimating)
+        if (PauseMenuUI.IsGamePaused || !inputEnabled || manager == null || IsAnimating)
         {
             return;
         }
@@ -192,8 +199,16 @@ public class PathArrow : MonoBehaviour
 
         while (Input.GetMouseButton(0))
         {
+            if (PauseMenuUI.IsGamePaused)
+            {
+                shouldActivateOnRelease = false;
+                SetHoldPreview(false);
+                break;
+            }
+
             if (!IsPointerOverThisArrow())
             {
+                // Leaving the arrow cancels this press; releasing over another arrow should not trigger it.
                 shouldActivateOnRelease = false;
                 SetHoldPreview(false);
 
@@ -210,13 +225,14 @@ public class PathArrow : MonoBehaviour
 
         if (shouldActivateOnRelease && !IsPointerOverThisArrow())
         {
+            // Final release-position check catches fast drags that leave on the same frame as release.
             shouldActivateOnRelease = false;
         }
 
         SetHoldPreview(false);
         pressRoutine = null;
 
-        if (shouldActivateOnRelease && inputEnabled && manager != null && !IsAnimating)
+        if (shouldActivateOnRelease && !PauseMenuUI.IsGamePaused && inputEnabled && manager != null && !IsAnimating)
         {
             manager.TryEscape(this);
         }
@@ -231,6 +247,7 @@ public class PathArrow : MonoBehaviour
 
         holdPreviewActive = active;
 
+        // Count active holds globally so camera panning can be disabled while an arrow is held.
         if (holdPreviewActive)
         {
             activeHoldPreviewCount++;
@@ -324,6 +341,7 @@ public class PathArrow : MonoBehaviour
             runtimeMaterial = CreateUnlitColorMaterial();
         }
 
+        // Keep the line material white so LineRenderer vertex color controls the final arrow color.
         SetMaterialColor(runtimeMaterial, Color.white);
         lineRenderer.material = runtimeMaterial;
     }
@@ -519,6 +537,7 @@ public class PathArrow : MonoBehaviour
 
         if (manager != null)
         {
+            // Tell GameManager the visual object can now be removed.
             manager.HandleArrowEscapeCompleted(this);
         }
     }
@@ -596,6 +615,8 @@ public class PathArrow : MonoBehaviour
         }
 
         direction.Normalize();
+
+        // The beam starts just past the head so it reads as a projected escape direction.
         Vector3 startPosition = headTransform.localPosition + direction * headSize * 0.35f;
         float boardLength = Mathf.Max(boardExitBounds.width, boardExitBounds.height) * 2f;
         float beamLength = Mathf.Max(previewBeamLength, boardLength);
@@ -625,6 +646,7 @@ public class PathArrow : MonoBehaviour
             return;
         }
 
+        // Copy values from the asset once when this runtime arrow is built.
         blockedColor = styleData.BlockedColor;
         holdHighlightColor = styleData.HoldHighlightColor;
         holdHighlightWhiteness = styleData.HoldHighlightBlend;
@@ -661,6 +683,7 @@ public class PathArrow : MonoBehaviour
         Vector3 worldPosition = targetCamera.ScreenToWorldPoint(Input.mousePosition);
         Collider2D[] hits = Physics2D.OverlapPointAll(worldPosition);
 
+        // Any generated segment collider or head collider owned by this arrow keeps the press valid.
         for (int i = 0; i < hits.Length; i++)
         {
             PathArrowColliderProxy proxy = hits[i].GetComponent<PathArrowColliderProxy>();
@@ -682,6 +705,8 @@ public class PathArrow : MonoBehaviour
 
         Mesh mesh = new Mesh();
         mesh.name = "PathArrowHeadMesh";
+
+        // Local +X is the arrow's forward direction; UpdateHeadPose rotates the head to match the path.
         mesh.vertices = new[]
         {
             new Vector3(tipLength, 0f, 0f),

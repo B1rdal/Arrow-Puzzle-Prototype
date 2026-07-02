@@ -1,6 +1,12 @@
+/*
+Summary:
+PathArrowColliderProxy is attached to generated colliders on an arrow. Unity sends
+mouse/touch press events to this proxy, and the proxy forwards them to the owning
+PathArrow.
+*/
+
 using UnityEngine;
 
-// Small click-forwarder placed on generated colliders and the arrow head.
 public class PathArrowColliderProxy : MonoBehaviour
 {
     private PathArrow owner;

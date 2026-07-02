@@ -1,10 +1,16 @@
+/*
+Summary:
+GameManager owns the arrow puzzle level. It builds the board from level data, tracks
+which grid cells are occupied, validates whether an arrow can escape, manages lives,
+and sends win/loss events to the UI.
+*/
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
 [DisallowMultipleComponent]
-// Owns the path-arrow board: builds arrows, tracks occupied cells, validates moves, and completes levels.
 public class GameManager : MonoBehaviour
 {
     [Header("Levels")]
@@ -67,10 +73,17 @@ public class GameManager : MonoBehaviour
     [Header("Events")]
     [SerializeField] private UnityEvent levelCompleted = new UnityEvent();
 
+    // Active arrows stay in this list until their visual escape/fade cleanup finishes.
     private readonly List<PathArrow> activeArrows = new List<PathArrow>();
     private readonly List<GameObject> gridDotObjects = new List<GameObject>();
+
+    // occupiedCells is the important gameplay map: it answers "which arrow is in this grid cell?"
     private readonly Dictionary<Vector2Int, PathArrow> occupiedCells = new Dictionary<Vector2Int, PathArrow>();
+
+    // A blocked arrow only costs one life until the player makes a valid move.
     private readonly HashSet<PathArrow> blockedMoveDebounce = new HashSet<PathArrow>();
+
+    // Escaping arrows have already been clicked correctly, even if their animation is still running.
     private readonly HashSet<PathArrow> escapingArrows = new HashSet<PathArrow>();
     private readonly List<Vector2Int> reusableCells = new List<Vector2Int>();
 
@@ -187,13 +200,15 @@ public class GameManager : MonoBehaviour
 
     public bool TryEscape(PathArrow arrow)
     {
-        if (levelEnded || (!allowConcurrentEscapes && inputLocked) || arrow == null || arrow.IsAnimating || escapingArrows.Contains(arrow) || !activeArrows.Contains(arrow))
+        // Reject input if the level is finished, this arrow is gone/animating, or input is locked.
+        if (PauseMenuUI.IsGamePaused || levelEnded || (!allowConcurrentEscapes && inputLocked) || arrow == null || arrow.IsAnimating || escapingArrows.Contains(arrow) || !activeArrows.Contains(arrow))
         {
             return false;
         }
 
         if (!CanArrowEscape(arrow))
         {
+            // RegisterBlockedMove returns false if the same wrong arrow is already red/debounced.
             bool shouldLoseLife = RegisterBlockedMove(arrow);
 
             if (shouldLoseLife)
@@ -210,6 +225,7 @@ public class GameManager : MonoBehaviour
             inputLocked = true;
         }
 
+        // From this point on, the move is considered successful for gameplay.
         ClearBlockedMoveDebounce();
         escapingArrows.Add(arrow);
 
@@ -220,6 +236,7 @@ public class GameManager : MonoBehaviour
 
         if (AreAllRemainingArrowsEscaping())
         {
+            // Complete immediately on the last valid click instead of waiting for fade-out.
             CompleteLevel();
         }
 
@@ -260,6 +277,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        // Animation cleanup happens after gameplay cleanup, so this can happen after level complete.
         activeArrows.Remove(arrow);
         escapingArrows.Remove(arrow);
         DestroyArrowObject(arrow.gameObject);
@@ -391,6 +409,7 @@ public class GameManager : MonoBehaviour
 
             foundArrow = true;
 
+            // If any active arrow has not started escaping yet, the puzzle is not cleared.
             if (!escapingArrows.Contains(arrow))
             {
                 return false;
@@ -462,6 +481,7 @@ public class GameManager : MonoBehaviour
 
         Vector3[] localPositions = new Vector3[arrowData.Points.Count];
 
+        // Level data is stored in grid coordinates; LineRenderer wants local positions.
         for (int i = 0; i < arrowData.Points.Count; i++)
         {
             localPositions[i] = GridToLocalPosition(arrowData.Points[i]);

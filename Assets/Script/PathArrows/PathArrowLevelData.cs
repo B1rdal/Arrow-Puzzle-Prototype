@@ -1,7 +1,13 @@
+/*
+Summary:
+PathArrowLevelData is the editable ScriptableObject for a puzzle level. Each arrow is
+stored as tail-to-head grid points, where the last segment decides the escape
+direction.
+*/
+
 using System.Collections.Generic;
 using UnityEngine;
 
-// One arrow's editable level data. Points are ordered from tail to head.
 [System.Serializable]
 public class PathArrowData
 {
@@ -25,8 +31,7 @@ public class PathArrowData
     }
 }
 
-// ScriptableObject level asset for boards made from long, turning path arrows.
-[CreateAssetMenu(fileName = "PathArrowLevelData", menuName = "Arrow Escape/Path Arrow Level Data")]
+[CreateAssetMenu(fileName = "PathArrowLevelData", menuName = "Arrow Escape/Level Data")]
 public class PathArrowLevelData : ScriptableObject
 {
     [Min(1)]

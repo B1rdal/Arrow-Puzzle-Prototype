@@ -1,7 +1,12 @@
+/*
+Summary:
+PathArrowSegmentColliderSpawner2D creates BoxCollider2D objects along each rendered
+arrow segment. This makes the full path clickable, not only the arrow head.
+*/
+
 using System.Collections.Generic;
 using UnityEngine;
 
-// Builds one BoxCollider2D per LineRenderer segment so the whole arrow path is clickable.
 public class PathArrowSegmentColliderSpawner2D : MonoBehaviour
 {
     private readonly List<GameObject> spawnedSegments = new List<GameObject>();

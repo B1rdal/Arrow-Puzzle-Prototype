@@ -1,9 +1,14 @@
+/*
+Summary:
+LivesUI displays the player's remaining lives using scene Image objects. It animates
+the heart that was just lost and can flash a full-screen panel when health decreases.
+*/
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Displays the current lives using Image objects already placed in the scene hierarchy.
 public class LivesUI : MonoBehaviour
 {
     [Header("References")]
@@ -52,15 +57,35 @@ public class LivesUI : MonoBehaviour
     private void OnEnable()
     {
         ResolveManager();
+        RefreshImageReferences();
+        PrepareHealthLostFlashPanel();
 
         if (manager != null)
         {
             manager.LivesChanged += HandleLivesChanged;
+            ApplyLivesChanged(manager.CurrentLives, manager.MaxLives, false);
         }
+
+        StartCoroutine(DeferredStartupRefresh());
     }
 
     private void Start()
     {
+        RefreshImageReferences();
+        PrepareHealthLostFlashPanel();
+
+        if (manager != null)
+        {
+            ApplyLivesChanged(manager.CurrentLives, manager.MaxLives, false);
+        }
+    }
+
+    private IEnumerator DeferredStartupRefresh()
+    {
+        // Android builds can briefly show serialized UI state during startup.
+        // Refreshing again after all Start methods have run keeps the life UI white/empty as intended.
+        yield return null;
+
         RefreshImageReferences();
         PrepareHealthLostFlashPanel();
 
@@ -147,6 +172,7 @@ public class LivesUI : MonoBehaviour
             && displayedMaxLives == safeMaxLives
             && safeCurrentLives < displayedLives;
 
+        // If multiple lives are lost at once, animate each newly empty heart.
         int lostStartIndex = canAnimateLostLife ? safeCurrentLives : -1;
         int lostEndIndex = canAnimateLostLife ? displayedLives - 1 : -1;
 
@@ -211,6 +237,7 @@ public class LivesUI : MonoBehaviour
 
             if (isPlayingLostAnimation)
             {
+                // Let the coroutine own this image until the blink/fade finishes.
                 continue;
             }
 
@@ -246,6 +273,7 @@ public class LivesUI : MonoBehaviour
 
         while (elapsed < duration)
         {
+            // Blink between the normal and warning colors while alpha fades out.
             float progress = Mathf.Clamp01(elapsed / duration);
             float blink = Mathf.PingPong(progress * blinkCount * 2f, 1f);
             Color color = Color.Lerp(fullLifeColor, lostLifeBlinkColor, blink);
@@ -269,6 +297,13 @@ public class LivesUI : MonoBehaviour
 
         image.sprite = isFull ? fullLifeSprite : emptyLifeSprite;
         image.color = isFull ? fullLifeColor : emptyLifeColor;
+        image.material = null;
+        image.SetAllDirty();
+
+        if (image.canvasRenderer != null)
+        {
+            image.canvasRenderer.SetColor(image.color);
+        }
     }
 
     private void StopLifeAnimation(Image image)
@@ -306,7 +341,9 @@ public class LivesUI : MonoBehaviour
             return;
         }
 
+        // The damage overlay is visual only; it should never block UI buttons.
         healthLostFlashPanel.raycastTarget = false;
+        healthLostFlashPanel.gameObject.SetActive(false);
         SetHealthLostFlashAlpha(0f);
     }
 
@@ -336,6 +373,7 @@ public class LivesUI : MonoBehaviour
         yield return FadeHealthLostFlash(0f, healthLostFlashColor.a, healthLostFlashFadeInDuration);
         yield return FadeHealthLostFlash(healthLostFlashColor.a, 0f, healthLostFlashFadeOutDuration);
         SetHealthLostFlashAlpha(0f);
+        healthLostFlashPanel.gameObject.SetActive(false);
         healthLostFlashRoutine = null;
     }
 
@@ -362,7 +400,7 @@ public class LivesUI : MonoBehaviour
             return;
         }
 
-        Color color = healthLostFlashColor;
+        Color color = alpha <= 0.0001f ? Color.clear : healthLostFlashColor;
         color.a = alpha;
         healthLostFlashPanel.color = color;
     }
@@ -376,5 +414,10 @@ public class LivesUI : MonoBehaviour
         }
 
         SetHealthLostFlashAlpha(0f);
+
+        if (healthLostFlashPanel != null)
+        {
+            healthLostFlashPanel.gameObject.SetActive(false);
+        }
     }
 }

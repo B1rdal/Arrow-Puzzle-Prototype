@@ -1,7 +1,13 @@
+/*
+Summary:
+PathArrowUtility contains grid-only helper logic shared by level building and move
+validation. It turns an arrow's corner points into occupied cells and finds the
+arrow's exit direction from its final segment.
+*/
+
 using System.Collections.Generic;
 using UnityEngine;
 
-// Grid math helpers for path arrows.
 public static class PathArrowUtility
 {
     // Expands tail-to-head corner points into every grid cell occupied by the arrow path.

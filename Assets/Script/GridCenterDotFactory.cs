@@ -1,6 +1,11 @@
+/*
+Summary:
+GridCenterDotFactory builds small mesh dots at cell centers. GameManager uses these
+dots as a visual grid guide while testing and tuning levels.
+*/
+
 using UnityEngine;
 
-// Creates small runtime mesh dots used to visualize the center of each board cell.
 public static class GridCenterDotFactory
 {
     private const int SegmentCount = 20;

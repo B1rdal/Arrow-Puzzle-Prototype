@@ -1,8 +1,14 @@
+/*
+Summary:
+PathArrowAnimation moves an arrow along its own path and then out of the grid. It
+samples the original path by distance every frame so curved/turning arrows move
+smoothly without relying on physics.
+*/
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Animates a path arrow by sliding a fixed-length window along the original path.
 public class PathArrowAnimation : MonoBehaviour
 {
     private const float MinPointDistance = 0.001f;
@@ -100,6 +106,7 @@ public class PathArrowAnimation : MonoBehaviour
 
         travelDistance += speed * Time.deltaTime;
 
+        // Distances are measured along the original path, then sampled into visible points.
         float headDistance = sourcePathLength + travelDistance;
         float tailDistance = CalculateTailDistance(headDistance);
 
@@ -134,9 +141,11 @@ public class PathArrowAnimation : MonoBehaviour
 
         if (!shortenBeforeExit)
         {
+            // Old behavior: keep the arrow's length while the whole path moves forward.
             return GetDistanceSnappedPastNearbyTurn(travelDistance);
         }
 
+        // Shortening behavior: the tail can move faster until the visible length reaches the target.
         float fasterTailDistance = travelDistance * shorteningTailSpeedMultiplier;
         float targetLengthTailDistance = Mathf.Max(0f, headDistance - targetVisibleLength);
         return GetDistanceSnappedPastNearbyTurn(Mathf.Min(fasterTailDistance, targetLengthTailDistance));
@@ -212,6 +221,7 @@ public class PathArrowAnimation : MonoBehaviour
 
             if (turnDistance - distance <= turnSnapDistance)
             {
+                // Snapping through tiny turn gaps reduces visual jitter around corners.
                 return turnDistance;
             }
 
@@ -230,6 +240,7 @@ public class PathArrowAnimation : MonoBehaviour
             return;
         }
 
+        // The visible arrow is a sliding window from tailDistance to headDistance.
         AddVisiblePoint(SamplePosition(tailDistance));
 
         float clampedHeadDistance = Mathf.Min(headDistance, sourcePathLength);
@@ -269,6 +280,7 @@ public class PathArrowAnimation : MonoBehaviour
 
         if (distance >= sourcePathLength)
         {
+            // Past the original path, continue straight in the final escape direction.
             return sourcePoints[sourcePoints.Count - 1] + exitDirection * (distance - sourcePathLength);
         }
 
