@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 078aa1fe4bba42fb9e6d94da537db556, type: 3}
+  m_Name: PathArrowLevel_New
+  m_EditorClassIdentifier: 
+  width: 8
+  height: 8
+  arrows:
+  - id: Arrow 2
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 1, y: 6}
+    - {x: 1, y: 5}
+    - {x: 0, y: 5}
+  - id: Arrow 3
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 7, y: 6}
+    - {x: 5, y: 6}
+    - {x: 2, y: 6}
+    - {x: 2, y: 5}
+    - {x: 2, y: 4}
+    - {x: 1, y: 4}
+    - {x: 0, y: 4}
+    - {x: 0, y: 3}
+    - {x: 0, y: 1}
+    - {x: 0, y: 0}
+    - {x: 4, y: 0}
+    - {x: 7, y: 0}
+    - {x: 7, y: 2}
+    - {x: 7, y: 5}
+    - {x: 3, y: 5}
+    - {x: 3, y: 4}
+    - {x: 3, y: 3}
+    - {x: 2, y: 3}
+    - {x: 1, y: 3}
+    - {x: 1, y: 2}
+    - {x: 1, y: 1}
+    - {x: 6, y: 1}
+    - {x: 6, y: 4}
+    - {x: 4, y: 4}
+    - {x: 4, y: 3}
+    - {x: 5, y: 3}
+    - {x: 5, y: 2}
+    - {x: 2, y: 2}
+  - id: Arrow 3
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 7, y: 7}
+    - {x: 0, y: 7}
+    - {x: 0, y: 6}

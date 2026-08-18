@@ -1,0 +1,104 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 078aa1fe4bba42fb9e6d94da537db556, type: 3}
+  m_Name: Level_02_7x7_Rectangle
+  m_EditorClassIdentifier: 
+  width: 7
+  height: 7
+  arrows:
+  - id: Arrow 1
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 0, y: 4}
+    - {x: 0, y: 6}
+    - {x: 2, y: 6}
+  - id: Arrow 2
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 6, y: 1}
+    - {x: 6, y: 4}
+  - id: Arrow 3
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 4, y: 2}
+    - {x: 5, y: 2}
+    - {x: 5, y: 3}
+    - {x: 4, y: 3}
+  - id: Arrow 4
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 5, y: 0}
+    - {x: 6, y: 0}
+  - id: Arrow 5
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 6, y: 5}
+    - {x: 5, y: 5}
+    - {x: 5, y: 4}
+    - {x: 3, y: 4}
+  - id: Arrow 6
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 3, y: 3}
+    - {x: 2, y: 3}
+    - {x: 2, y: 5}
+    - {x: 1, y: 5}
+  - id: Arrow 7
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 1, y: 3}
+    - {x: 1, y: 4}
+  - id: Arrow 8
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 3, y: 0}
+    - {x: 4, y: 0}
+  - id: Arrow 9
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 4, y: 5}
+    - {x: 3, y: 5}
+  - id: Arrow 10
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 3, y: 6}
+    - {x: 4, y: 6}
+  - id: Arrow 11
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 5, y: 6}
+    - {x: 6, y: 6}
+  - id: Arrow 12
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 1, y: 2}
+    - {x: 1, y: 1}
+  - id: Arrow 13
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 2, y: 2}
+    - {x: 3, y: 2}
+    - {x: 3, y: 1}
+    - {x: 5, y: 1}
+  - id: Arrow 14
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 2, y: 0}
+    - {x: 2, y: 1}
+  - id: Arrow 15
+    color: {r: 0, g: 0, b: 0, a: 1}
+    points:
+    - {x: 0, y: 3}
+    - {x: 0, y: 0}
+    - {x: 1, y: 0}
+  hasCustomShape: 0
+  activeCells: []

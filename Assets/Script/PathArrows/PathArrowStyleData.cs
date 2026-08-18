@@ -12,6 +12,7 @@ public class PathArrowStyleData : ScriptableObject
 {
     [Header("Colors")]
     [SerializeField] private Color arrowColor = new Color(0.25f, 0.65f, 1f, 1f);
+    [SerializeField] private Color movingColor = new Color(0.15f, 0.9f, 0.35f, 1f);
     [SerializeField] private Color blockedColor = new Color(1f, 0.25f, 0.2f, 1f);
     [SerializeField] private Color holdHighlightColor = Color.white;
     [Range(0f, 1f)]
@@ -46,6 +47,7 @@ public class PathArrowStyleData : ScriptableObject
     [SerializeField] private float previewBeamAlpha = 0.24f;
 
     public Color ArrowColor => arrowColor;
+    public Color MovingColor => movingColor;
     public Color BlockedColor => blockedColor;
     public Color HoldHighlightColor => holdHighlightColor;
     public float HoldHighlightBlend => holdHighlightBlend;

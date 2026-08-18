@@ -2,7 +2,7 @@
 Summary:
 BoardCameraController handles board navigation. It controls orthographic zoom,
 binds manually assigned zoom UI, supports mouse/touch pan and mobile pinch zoom,
-and clamps movement so the view stays near the puzzle board.
+scales zoom-out to the current board size, and clamps movement so the view stays near the puzzle board.
 */
 
 using System.Collections;
@@ -29,6 +29,11 @@ public class BoardCameraController : MonoBehaviour
     [SerializeField] private bool allowMouseWheelZoom = true;
     [SerializeField] private bool scaleMaxZoomSizeWithScreenAspect = true;
     [SerializeField] private Vector2 maxZoomReferenceResolution = new Vector2(1080f, 1920f);
+    [SerializeField] private bool scaleMaxZoomSizeWithBoard = true;
+    [Min(0f)]
+    [SerializeField] private float maxZoomBoardPaddingCells = 1.5f;
+    [Range(0f, 0.2f)]
+    [SerializeField] private float maxZoomBoardLongSidePadding = 0.1f;
 
     [Header("Drag Limits")]
     [Min(0f)]
@@ -43,6 +48,10 @@ public class BoardCameraController : MonoBehaviour
     [SerializeField] private float touchPanStartThresholdPixels = 6f;
     [Range(0.25f, 2f)]
     [SerializeField] private float pinchZoomSensitivity = 1f;
+    [Min(0f)]
+    [SerializeField] private float touchArrowAvoidRadiusPixels = 44f;
+    [Min(0f)]
+    [SerializeField] private float mouseArrowAvoidRadiusPixels = 8f;
 
     [Header("Zoom UI")]
     [SerializeField] private Button manualZoomInButton = null;
@@ -154,6 +163,40 @@ public class BoardCameraController : MonoBehaviour
         UpdateZoomSlider();
     }
 
+    public void ConfigureRuntimeTesterControls(
+        Camera camera,
+        GameManager manager,
+        float testerZoomStep,
+        float testerMinZoomSize,
+        float testerMaxZoomSize,
+        float testerPanPaddingCells)
+    {
+        targetCamera = camera != null ? camera : targetCamera;
+        boardManager = manager != null ? manager : boardManager;
+        zoomStep = Mathf.Max(0.05f, testerZoomStep);
+        minZoomSize = Mathf.Max(0.5f, testerMinZoomSize);
+        maxZoomSize = Mathf.Max(minZoomSize, testerMaxZoomSize);
+        allowMouseWheelZoom = true;
+        allowTouchControls = false;
+        clampCameraToBoard = true;
+        scaleMaxZoomSizeWithScreenAspect = false;
+        float testerCellSize = boardManager != null ? Mathf.Max(0.0001f, boardManager.CellSize) : 1f;
+        boardPadding = Mathf.Max(0f, testerPanPaddingCells) * testerCellSize;
+        lastEffectiveMaxZoomSize = -1f;
+        lastZoomLimitScreenSize = new Vector2Int(-1, -1);
+
+        if (targetCamera == null)
+        {
+            return;
+        }
+
+        targetCamera.orthographic = true;
+        ApplyZoomLimitsIfNeeded(true);
+        SaveDefaultView();
+        ClampCameraPosition();
+        UpdateZoomSlider();
+    }
+
     private void ResolveReferences()
     {
         if (targetCamera == null)
@@ -214,7 +257,18 @@ public class BoardCameraController : MonoBehaviour
     private float GetEffectiveMaxZoomSize()
     {
         float safeMaxZoomSize = Mathf.Max(minZoomSize, maxZoomSize);
+        float effectiveMaxZoomSize = GetScreenScaledMaxZoomSize(safeMaxZoomSize);
 
+        if (scaleMaxZoomSizeWithBoard)
+        {
+            effectiveMaxZoomSize = Mathf.Max(effectiveMaxZoomSize, GetBoardFitMaxZoomSize());
+        }
+
+        return Mathf.Max(minZoomSize, effectiveMaxZoomSize);
+    }
+
+    private float GetScreenScaledMaxZoomSize(float safeMaxZoomSize)
+    {
         if (!scaleMaxZoomSizeWithScreenAspect ||
             maxZoomReferenceResolution.x <= 0f ||
             maxZoomReferenceResolution.y <= 0f ||
@@ -225,9 +279,7 @@ public class BoardCameraController : MonoBehaviour
         }
 
         float referenceAspect = maxZoomReferenceResolution.x / maxZoomReferenceResolution.y;
-        float currentAspect = targetCamera != null && targetCamera.aspect > 0f
-            ? targetCamera.aspect
-            : (float)Screen.width / Screen.height;
+        float currentAspect = GetCurrentCameraAspect();
 
         if (currentAspect <= 0.0001f)
         {
@@ -238,6 +290,63 @@ public class BoardCameraController : MonoBehaviour
         // matching the reference device where Max Zoom Size was tuned.
         float scaledMaxZoomSize = safeMaxZoomSize * (referenceAspect / currentAspect);
         return Mathf.Max(minZoomSize, scaledMaxZoomSize);
+    }
+
+    private float GetBoardFitMaxZoomSize()
+    {
+        if (boardManager == null)
+        {
+            return minZoomSize;
+        }
+
+        Bounds boardBounds = boardManager.GetBoardWorldBounds();
+
+        if (boardBounds.size.x <= 0.0001f || boardBounds.size.y <= 0.0001f)
+        {
+            return minZoomSize;
+        }
+
+        float aspect = GetCurrentCameraAspect();
+        float cellWorldSize = GetBoardCellWorldSize(boardBounds);
+        float fixedPadding = cellWorldSize * maxZoomBoardPaddingCells;
+        float longSidePaddingFactor = Mathf.Max(0.1f, maxZoomBoardLongSidePadding);
+        float longSidePadding = Mathf.Max(boardBounds.size.x, boardBounds.size.y) * longSidePaddingFactor;
+        float boardPaddingForZoom = Mathf.Max(0f, fixedPadding + longSidePadding);
+        float verticalFitSize = boardBounds.size.y * 0.5f + boardPaddingForZoom;
+        float horizontalFitSize = boardBounds.size.x * 0.5f / aspect + boardPaddingForZoom;
+
+        // 15x15 on a 1080x1920 portrait screen still lands near the old 15 target:
+        // 15 / (2 * 0.5625 aspect) + 1.5 cell padding + 10% long-side padding = about 16.3.
+        // Tall or wide boards, such as 20x35, get extra breathing room from the long-side term.
+        return Mathf.Max(minZoomSize, Mathf.Max(verticalFitSize, horizontalFitSize));
+    }
+
+    private float GetBoardCellWorldSize(Bounds boardBounds)
+    {
+        if (boardManager == null)
+        {
+            return 1f;
+        }
+
+        float fallbackCellSize = Mathf.Max(0.0001f, boardManager.CellSize);
+        float xCellSize = boardManager.Width > 0 ? boardBounds.size.x / boardManager.Width : fallbackCellSize;
+        float yCellSize = boardManager.Height > 0 ? boardBounds.size.y / boardManager.Height : fallbackCellSize;
+        return Mathf.Max(0.0001f, Mathf.Max(xCellSize, yCellSize));
+    }
+
+    private float GetCurrentCameraAspect()
+    {
+        if (targetCamera != null && targetCamera.aspect > 0f)
+        {
+            return Mathf.Max(0.0001f, targetCamera.aspect);
+        }
+
+        if (Screen.width > 0 && Screen.height > 0)
+        {
+            return Mathf.Max(0.0001f, (float)Screen.width / Screen.height);
+        }
+
+        return Mathf.Max(0.0001f, maxZoomReferenceResolution.x / Mathf.Max(1f, maxZoomReferenceResolution.y));
     }
 
     private void ApplyZoomLimitsIfNeeded(bool force)
@@ -280,7 +389,7 @@ public class BoardCameraController : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
-            if (IsPointerOverUi(Input.mousePosition) || IsPointerOverArrow(Input.mousePosition))
+            if (IsPointerOverUi(Input.mousePosition) || IsPointerOverArrow(Input.mousePosition, false))
             {
                 return;
             }
@@ -352,7 +461,7 @@ public class BoardCameraController : MonoBehaviour
 
         if (touch.phase == TouchPhase.Began)
         {
-            if (IsPointerOverUi(touch.position) || IsPointerOverArrow(touch.position))
+            if (IsPointerOverUi(touch.position) || IsPointerOverArrow(touch.position, true))
             {
                 isTouchDragging = false;
                 activePanFingerId = -1;
@@ -406,8 +515,8 @@ public class BoardCameraController : MonoBehaviour
         {
             if (IsPointerOverUi(firstTouch.position) ||
                 IsPointerOverUi(secondTouch.position) ||
-                IsPointerOverArrow(firstTouch.position) ||
-                IsPointerOverArrow(secondTouch.position))
+                IsPointerOverArrow(firstTouch.position, true) ||
+                IsPointerOverArrow(secondTouch.position, true))
             {
                 ResetTouchState();
                 ignoreSingleTouchUntilReleased = true;
@@ -519,25 +628,10 @@ public class BoardCameraController : MonoBehaviour
         return UiRaycastResults.Count > 0;
     }
 
-    private bool IsPointerOverArrow(Vector2 screenPosition)
+    private bool IsPointerOverArrow(Vector2 screenPosition, bool isTouch)
     {
-        if (targetCamera == null)
-        {
-            return false;
-        }
-
-        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(screenPosition);
-        Collider2D[] hits = Physics2D.OverlapPointAll(worldPosition);
-
-        for (int i = 0; i < hits.Length; i++)
-        {
-            if (hits[i] != null && hits[i].GetComponent<PathArrowColliderProxy>() != null)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        float hitRadius = isTouch ? touchArrowAvoidRadiusPixels : mouseArrowAvoidRadiusPixels;
+        return PathArrowInputUtility.IsScreenPositionOverArrow(targetCamera, screenPosition, null, hitRadius);
     }
 
     private void ResetPointerState()

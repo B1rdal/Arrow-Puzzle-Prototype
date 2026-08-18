@@ -120,6 +120,24 @@ public class LivesUI : MonoBehaviour
         ApplyLivesChanged(currentLives, maxLives, true);
     }
 
+    public void ForceStartupRefresh()
+    {
+        ResolveManager();
+        RefreshImageReferences();
+        StopAllLifeAnimations();
+        PrepareHealthLostFlashPanel();
+
+        if (manager != null)
+        {
+            ApplyLivesChanged(manager.CurrentLives, manager.MaxLives, false);
+        }
+        else
+        {
+            int visibleLifeCount = Mathf.Max(1, lifeImages.Count);
+            ApplyLivesChanged(visibleLifeCount, visibleLifeCount, false);
+        }
+    }
+
     [ContextMenu("Collect Life Images From Container")]
     private void CollectLifeImagesFromContainer()
     {

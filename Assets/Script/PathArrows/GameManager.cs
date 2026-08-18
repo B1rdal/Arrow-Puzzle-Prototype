@@ -2,17 +2,23 @@
 Summary:
 GameManager owns the arrow puzzle level. It builds the board from level data, tracks
 which grid cells are occupied, validates whether an arrow can escape, manages lives,
-and sends win/loss events to the UI.
+and sends win/loss events to the UI. Optional active board cells allow non-rectangular
+    levels where inactive cells form gaps while exit rays continue to the board edge.
 */
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.Events;
+using UnityEngine.UI;
 
 [DisallowMultipleComponent]
 public class GameManager : MonoBehaviour
 {
+    private static readonly List<RaycastResult> UiRaycastResults = new List<RaycastResult>();
+
     [Header("Levels")]
     [SerializeField] private List<PathArrowLevelData> levels = new List<PathArrowLevelData>();
     [Min(0)]
@@ -41,7 +47,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Motion")]
     [Min(0.1f)]
-    [SerializeField] private float escapeSpeed = 6f;
+    [SerializeField] private float escapeSpeed = 6.5f;
     [SerializeField] private bool allowConcurrentEscapes = true;
     [SerializeField] private bool shortenArrowsBeforeExit = true;
     [Min(0.1f)]
@@ -56,12 +62,20 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float outsideGridMargin = 0.35f;
 
     [Header("Lives")]
+    [SerializeField] private bool livesEnabled = true;
     [Min(1)]
     [SerializeField] private int maxLives = 3;
 
     [Header("Camera")]
     [SerializeField] private bool frameCameraOnBuild = true;
     [SerializeField] private Camera targetCamera;
+
+    [Header("Input")]
+    [SerializeField] private bool handleArrowInput = true;
+    [Min(0f)]
+    [SerializeField] private float touchArrowHitRadiusPixels = 44f;
+    [Min(0f)]
+    [SerializeField] private float mouseArrowHitRadiusPixels = 8f;
 
     [Header("Grid Dots")]
     [SerializeField] private bool showGridCenterDots = true;
@@ -72,6 +86,13 @@ public class GameManager : MonoBehaviour
 
     [Header("Events")]
     [SerializeField] private UnityEvent levelCompleted = new UnityEvent();
+
+    [Header("Current Level UI")]
+    [SerializeField] private bool showCurrentLevelLabel = true;
+    [SerializeField] private Text currentLevelLabel = null;
+    [SerializeField] private bool createCurrentLevelLabelIfMissing = true;
+    [SerializeField] private string currentLevelLabelFormat = "Level {0}";
+    [SerializeField] private Vector2 currentLevelLabelOffset = new Vector2(24f, -24f);
 
     // Active arrows stay in this list until their visual escape/fade cleanup finishes.
     private readonly List<PathArrow> activeArrows = new List<PathArrow>();
@@ -86,11 +107,20 @@ public class GameManager : MonoBehaviour
     // Escaping arrows have already been clicked correctly, even if their animation is still running.
     private readonly HashSet<PathArrow> escapingArrows = new HashSet<PathArrow>();
     private readonly List<Vector2Int> reusableCells = new List<Vector2Int>();
+    private readonly List<PathArrowData> runtimeLevelArrows = new List<PathArrowData>();
+    private readonly List<Vector2Int> runtimeActiveCells = new List<Vector2Int>();
+    private readonly HashSet<Vector2Int> activeBoardCells = new HashSet<Vector2Int>();
 
     private Transform gridDotParent;
+    private bool useRuntimeLevelOverride;
+    private bool runtimeLevelHasCustomShape;
+    private bool hasCustomBoardShape;
+    private int runtimeLevelWidth;
+    private int runtimeLevelHeight;
     private int width;
     private int height;
     private int currentLives;
+    private Coroutine startupVisualRefreshRoutine;
     private bool inputLocked;
     private bool hasLoggedGameLoss;
     private bool levelEnded;
@@ -102,10 +132,13 @@ public class GameManager : MonoBehaviour
     public float CellSize => cellSize;
     public int MaxLives => Mathf.Max(1, maxLives);
     public int CurrentLives => currentLives;
+    public bool LivesEnabled => livesEnabled;
     public IReadOnlyList<PathArrowLevelData> Levels => levels;
     public int CurrentLevelIndex => GetClampedLevelIndex();
     public PathArrowLevelData CurrentLevel => GetCurrentLevelData();
     public bool LevelEnded => levelEnded;
+    public bool HasCustomBoardShape => hasCustomBoardShape;
+    public IReadOnlyCollection<Vector2Int> ActiveBoardCells => activeBoardCells;
 
     public event Action<PathArrow> ArrowEscaped;
     public event Action<PathArrow> BlockedArrowTapped;
@@ -132,6 +165,16 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private void Update()
+    {
+        if (handleArrowInput)
+        {
+            HandleArrowPointerInput();
+        }
+        //To Debug visual in case in bugs out
+        //Time.timeScale = 0.1f;
+    }
+
     [ContextMenu("Build Path Arrow Level")]
     public void BuildLevel()
     {
@@ -141,6 +184,7 @@ public class GameManager : MonoBehaviour
         ResetLives();
 
         IReadOnlyList<PathArrowData> arrows = GetLevelArrows(out width, out height);
+        ConfigureActiveBoardCells(GetLevelActiveCells(), GetLevelHasCustomShape());
 
         // Dots are rebuilt first so they sit behind generated arrows.
         RebuildGridDots();
@@ -155,6 +199,9 @@ public class GameManager : MonoBehaviour
             FrameCamera();
         }
 
+        ForceArrowVisualRefresh(true);
+        StartStartupVisualRefresh();
+        UpdateCurrentLevelLabel();
         LevelStarted?.Invoke();
     }
 
@@ -196,6 +243,86 @@ public class GameManager : MonoBehaviour
     public void LoadNextLevel()
     {
         BuildNextLevel();
+    }
+
+    public void BuildRuntimeLevel(int levelWidth, int levelHeight, IEnumerable<PathArrowData> levelArrows)
+    {
+        BuildRuntimeLevel(levelWidth, levelHeight, levelArrows, null);
+    }
+
+    public void BuildRuntimeLevel(
+        int levelWidth,
+        int levelHeight,
+        IEnumerable<PathArrowData> levelArrows,
+        IEnumerable<Vector2Int> levelActiveCells)
+    {
+        BuildRuntimeLevel(levelWidth, levelHeight, levelArrows, levelActiveCells, false);
+    }
+
+    public void BuildRuntimeLevel(
+        int levelWidth,
+        int levelHeight,
+        IEnumerable<PathArrowData> levelArrows,
+        IEnumerable<Vector2Int> levelActiveCells,
+        bool levelHasCustomShape)
+    {
+        buildOnStart = false;
+        useRuntimeLevelOverride = true;
+        runtimeLevelWidth = Mathf.Max(1, levelWidth);
+        runtimeLevelHeight = Mathf.Max(1, levelHeight);
+        runtimeLevelArrows.Clear();
+        runtimeActiveCells.Clear();
+        runtimeLevelHasCustomShape = levelHasCustomShape;
+
+        if (levelArrows != null)
+        {
+            runtimeLevelArrows.AddRange(levelArrows);
+        }
+
+        if (levelActiveCells != null)
+        {
+            runtimeActiveCells.AddRange(levelActiveCells);
+        }
+
+        runtimeLevelHasCustomShape = runtimeLevelHasCustomShape || runtimeActiveCells.Count > 0;
+
+        BuildLevel();
+    }
+
+    public void ClearRuntimeLevelOverride()
+    {
+        useRuntimeLevelOverride = false;
+        runtimeLevelHasCustomShape = false;
+        runtimeLevelArrows.Clear();
+        runtimeActiveCells.Clear();
+        ClearLevel();
+    }
+
+    public void ConfigureRuntimeLevelTester(PathArrowStyleData styleData, Camera camera)
+    {
+        buildOnStart = false;
+        targetCamera = camera != null ? camera : Camera.main;
+        frameCameraOnBuild = true;
+        handleArrowInput = true;
+        livesEnabled = false;
+
+        if (styleData != null)
+        {
+            arrowStyle = styleData;
+        }
+
+        useLevelArrowColors = true;
+
+        // Match the manually tuned gameplay scene defaults used by the real board.
+        escapeSpeed = 13.5f;
+        shortenArrowsBeforeExit = false;
+        exitVisibleLengthCells = 3f;
+        headCrossFadeDelay = 2f;
+        touchArrowHitRadiusPixels = 20f;
+        mouseArrowHitRadiusPixels = 8f;
+        showGridCenterDots = true;
+        gridDotColor = new Color(0f, 0f, 0f, 0.6039216f);
+        gridDotRadius = 0.06f;
     }
 
     public bool TryEscape(PathArrow arrow)
@@ -252,10 +379,12 @@ public class GameManager : MonoBehaviour
 
         Vector2Int checkPosition = arrow.HeadGridPosition + arrow.ExitGridDirection;
 
-        // Only the straight path in front of the head matters for escape.
-        while (IsInsideGrid(checkPosition))
+        // Inactive custom-shape cells are transparent gaps, not an escape edge.
+        // Keep checking until the ray leaves the full rectangular board so an
+        // arrow cannot pass through a gap and collide with another board island.
+        while (IsInsideGridBounds(checkPosition))
         {
-            if (occupiedCells.TryGetValue(checkPosition, out PathArrow blocker) && blocker != arrow)
+            if (occupiedCells.ContainsKey(checkPosition))
             {
                 return false;
             }
@@ -323,15 +452,23 @@ public class GameManager : MonoBehaviour
 
     public bool IsInsideGrid(Vector2Int gridPosition)
     {
-        return gridPosition.x >= 0
-            && gridPosition.y >= 0
-            && gridPosition.x < width
-            && gridPosition.y < height;
+        if (!IsInsideGridBounds(gridPosition))
+        {
+            return false;
+        }
+
+        return !hasCustomBoardShape || activeBoardCells.Contains(gridPosition);
     }
 
     public void ClearLevel()
     {
         ClearBlockedMoveDebounce();
+
+        if (startupVisualRefreshRoutine != null)
+        {
+            StopCoroutine(startupVisualRefreshRoutine);
+            startupVisualRefreshRoutine = null;
+        }
 
         for (int i = activeArrows.Count - 1; i >= 0; i--)
         {
@@ -345,8 +482,108 @@ public class GameManager : MonoBehaviour
         escapingArrows.Clear();
         ClearGridDots();
         occupiedCells.Clear();
+        activeBoardCells.Clear();
+        hasCustomBoardShape = false;
         inputLocked = false;
         levelEnded = false;
+    }
+
+    private void UpdateCurrentLevelLabel()
+    {
+        if (!showCurrentLevelLabel)
+        {
+            if (currentLevelLabel != null)
+            {
+                currentLevelLabel.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
+        EnsureCurrentLevelLabel();
+
+        if (currentLevelLabel == null)
+        {
+            return;
+        }
+
+        currentLevelLabel.gameObject.SetActive(true);
+        string labelFormat = string.IsNullOrWhiteSpace(currentLevelLabelFormat) ? "Level {0}" : currentLevelLabelFormat;
+        currentLevelLabel.text = string.Format(labelFormat, GetClampedLevelIndex() + 1);
+    }
+
+    private void EnsureCurrentLevelLabel()
+    {
+        if (currentLevelLabel != null || !createCurrentLevelLabelIfMissing)
+        {
+            return;
+        }
+
+        Canvas canvas = FindFirstObjectByType<Canvas>();
+        if (canvas == null)
+        {
+            return;
+        }
+
+        Transform labelParent = canvas.transform.Find("SafeAreaRoot") ?? canvas.transform;
+        GameObject labelObject = new GameObject("CurrentLevelLabel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        labelObject.transform.SetParent(labelParent, false);
+
+        RectTransform rectTransform = labelObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(0f, 1f);
+        rectTransform.anchorMax = new Vector2(0f, 1f);
+        rectTransform.pivot = new Vector2(0f, 1f);
+        rectTransform.anchoredPosition = currentLevelLabelOffset;
+        rectTransform.sizeDelta = new Vector2(220f, 48f);
+
+        currentLevelLabel = labelObject.GetComponent<Text>();
+        currentLevelLabel.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (currentLevelLabel.font == null)
+        {
+            currentLevelLabel.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        }
+        currentLevelLabel.fontSize = 28;
+        currentLevelLabel.fontStyle = FontStyle.Bold;
+        currentLevelLabel.alignment = TextAnchor.MiddleLeft;
+        currentLevelLabel.color = Color.white;
+        currentLevelLabel.raycastTarget = false;
+    }
+
+    public void ForceArrowVisualRefresh(bool restoreStartingShape)
+    {
+        for (int i = 0; i < activeArrows.Count; i++)
+        {
+            if (activeArrows[i] != null)
+            {
+                activeArrows[i].ForceVisualRefresh(restoreStartingShape);
+            }
+        }
+    }
+
+    private void StartStartupVisualRefresh()
+    {
+        if (!isActiveAndEnabled)
+        {
+            return;
+        }
+
+        if (startupVisualRefreshRoutine != null)
+        {
+            StopCoroutine(startupVisualRefreshRoutine);
+        }
+
+        startupVisualRefreshRoutine = StartCoroutine(StartupVisualRefreshRoutine());
+    }
+
+    private IEnumerator StartupVisualRefreshRoutine()
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            yield return null;
+            ForceArrowVisualRefresh(true);
+        }
+
+        startupVisualRefreshRoutine = null;
     }
 
     private void CompleteLevel()
@@ -428,7 +665,7 @@ public class GameManager : MonoBehaviour
 
     private void LoseLifeForFailedMove()
     {
-        if (hasLoggedGameLoss)
+        if (!livesEnabled || hasLoggedGameLoss)
         {
             return;
         }
@@ -460,6 +697,18 @@ public class GameManager : MonoBehaviour
         if (!PathArrowUtility.TryBuildOccupiedCells(arrowData.Points, reusableCells))
         {
             Debug.LogWarning($"Skipping {arrowData.Id}: path must use horizontal/vertical segments and have a valid head direction.", this);
+            return false;
+        }
+
+        if (PathArrowUtility.TryFindSelfOverlap(arrowData.Points, out Vector2Int selfOverlapCell, out int selfOverlapSegmentIndex))
+        {
+            Debug.LogWarning($"Skipping {arrowData.Id}: path crosses itself at {selfOverlapCell.x},{selfOverlapCell.y} on segment {selfOverlapSegmentIndex}.", this);
+            return false;
+        }
+
+        if (PathArrowUtility.TryFindOwnExitBlock(arrowData.Points, width, height, hasCustomBoardShape, activeBoardCells, out Vector2Int ownExitBlockCell))
+        {
+            Debug.LogWarning($"Skipping {arrowData.Id}: exit path hits its own body at {ownExitBlockCell.x},{ownExitBlockCell.y}.", this);
             return false;
         }
 
@@ -515,6 +764,75 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
+    private void HandleArrowPointerInput()
+    {
+        if (PauseMenuUI.IsGamePaused || levelEnded || inputLocked || PathArrow.IsAnyArrowHeld)
+        {
+            return;
+        }
+
+        if (Input.touchCount > 0)
+        {
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+
+                if (touch.phase == TouchPhase.Began)
+                {
+                    TryStartArrowPress(touch.position, touch.fingerId, true);
+                    return;
+                }
+            }
+
+            return;
+        }
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            TryStartArrowPress(Input.mousePosition, -1, false);
+        }
+    }
+
+    private void TryStartArrowPress(Vector2 screenPosition, int pointerId, bool isTouch)
+    {
+        if (IsPointerOverUi(screenPosition, pointerId))
+        {
+            return;
+        }
+
+        if (TryGetArrowAtScreenPosition(screenPosition, isTouch, out PathArrow arrow))
+        {
+            arrow.HandlePressStarted(pointerId, isTouch, screenPosition);
+        }
+    }
+
+    private bool TryGetArrowAtScreenPosition(Vector2 screenPosition, bool isTouch, out PathArrow arrow)
+    {
+        Camera inputCamera = targetCamera != null ? targetCamera : Camera.main;
+        float hitRadius = isTouch ? touchArrowHitRadiusPixels : mouseArrowHitRadiusPixels;
+        return PathArrowInputUtility.TryGetArrowAtScreenPosition(inputCamera, screenPosition, hitRadius, true, out arrow);
+    }
+
+    private static bool IsPointerOverUi(Vector2 screenPosition, int pointerId)
+    {
+        EventSystem eventSystem = EventSystem.current;
+
+        if (eventSystem == null)
+        {
+            return false;
+        }
+
+        PointerEventData pointerData = new PointerEventData(eventSystem)
+        {
+            position = screenPosition,
+            pointerId = pointerId
+        };
+
+        UiRaycastResults.Clear();
+        eventSystem.RaycastAll(pointerData, UiRaycastResults);
+        return UiRaycastResults.Count > 0;
+    }
+
     private Color GetArrowColor(PathArrowData arrowData)
     {
         if (arrowStyle != null && !useLevelArrowColors)
@@ -561,6 +879,13 @@ public class GameManager : MonoBehaviour
 
     private IReadOnlyList<PathArrowData> GetLevelArrows(out int levelWidth, out int levelHeight)
     {
+        if (useRuntimeLevelOverride)
+        {
+            levelWidth = Mathf.Max(1, runtimeLevelWidth);
+            levelHeight = Mathf.Max(1, runtimeLevelHeight);
+            return runtimeLevelArrows;
+        }
+
         PathArrowLevelData currentLevel = GetCurrentLevelData();
 
         if (currentLevel != null)
@@ -575,13 +900,85 @@ public class GameManager : MonoBehaviour
         return CreateFallbackArrows();
     }
 
+    private IReadOnlyCollection<Vector2Int> GetLevelActiveCells()
+    {
+        if (useRuntimeLevelOverride)
+        {
+            return runtimeActiveCells;
+        }
+
+        PathArrowLevelData currentLevel = GetCurrentLevelData();
+        return currentLevel != null ? currentLevel.ActiveCells : null;
+    }
+
+    private bool GetLevelHasCustomShape()
+    {
+        if (useRuntimeLevelOverride)
+        {
+            return runtimeLevelHasCustomShape;
+        }
+
+        PathArrowLevelData currentLevel = GetCurrentLevelData();
+        return currentLevel != null && currentLevel.HasCustomShape;
+    }
+
+    private void ConfigureActiveBoardCells(IReadOnlyCollection<Vector2Int> sourceCells, bool levelHasCustomShape)
+    {
+        activeBoardCells.Clear();
+        hasCustomBoardShape = levelHasCustomShape;
+
+        if (!levelHasCustomShape || sourceCells == null || sourceCells.Count == 0)
+        {
+            return;
+        }
+
+        foreach (Vector2Int cell in sourceCells)
+        {
+            if (IsInsideGridBounds(cell))
+            {
+                activeBoardCells.Add(cell);
+            }
+        }
+
+    }
+
+    private bool IsInsideGridBounds(Vector2Int gridPosition)
+    {
+        return gridPosition.x >= 0
+            && gridPosition.y >= 0
+            && gridPosition.x < width
+            && gridPosition.y < height;
+    }
+
     private Rect GetBoardLocalBounds()
     {
         // Bounds are measured around cell edges, not center dots.
+        Vector2Int bottomLeftCell = Vector2Int.zero;
+        Vector2Int topRightCell = new Vector2Int(Width - 1, Height - 1);
+
+        if (hasCustomBoardShape && activeBoardCells.Count > 0)
+        {
+            int minX = Width - 1;
+            int minY = Height - 1;
+            int maxX = 0;
+            int maxY = 0;
+
+            foreach (Vector2Int cell in activeBoardCells)
+            {
+                minX = Mathf.Min(minX, cell.x);
+                minY = Mathf.Min(minY, cell.y);
+                maxX = Mathf.Max(maxX, cell.x);
+                maxY = Mathf.Max(maxY, cell.y);
+            }
+
+            bottomLeftCell = new Vector2Int(minX, minY);
+            topRightCell = new Vector2Int(maxX, maxY);
+        }
+
         int boardWidth = Width;
         int boardHeight = Height;
-        Vector3 bottomLeftCenter = GridToLocalPosition(Vector2Int.zero, boardWidth, boardHeight);
-        Vector3 topRightCenter = GridToLocalPosition(new Vector2Int(boardWidth - 1, boardHeight - 1), boardWidth, boardHeight);
+        Vector3 bottomLeftCenter = GridToLocalPosition(bottomLeftCell, boardWidth, boardHeight);
+        Vector3 topRightCenter = GridToLocalPosition(topRightCell, boardWidth, boardHeight);
         float halfCell = cellSize * 0.5f;
 
         float xMin = Mathf.Min(bottomLeftCenter.x, topRightCenter.x) - halfCell;
@@ -594,12 +991,22 @@ public class GameManager : MonoBehaviour
 
     private int GetConfiguredWidth()
     {
+        if (useRuntimeLevelOverride)
+        {
+            return Mathf.Max(1, runtimeLevelWidth);
+        }
+
         PathArrowLevelData currentLevel = GetCurrentLevelData();
         return currentLevel != null ? currentLevel.Width : Mathf.Max(1, fallbackWidth);
     }
 
     private int GetConfiguredHeight()
     {
+        if (useRuntimeLevelOverride)
+        {
+            return Mathf.Max(1, runtimeLevelHeight);
+        }
+
         PathArrowLevelData currentLevel = GetCurrentLevelData();
         return currentLevel != null ? currentLevel.Height : Mathf.Max(1, fallbackHeight);
     }
@@ -700,7 +1107,13 @@ public class GameManager : MonoBehaviour
         {
             for (int x = 0; x < width; x++)
             {
-                Vector3 position = GridToLocalPosition(new Vector2Int(x, y));
+                Vector2Int cell = new Vector2Int(x, y);
+                if (!IsInsideGrid(cell))
+                {
+                    continue;
+                }
+
+                Vector3 position = GridToLocalPosition(cell);
                 position.z -= 0.08f;
 
                 GameObject dot = GridCenterDotFactory.CreateDot(
@@ -744,16 +1157,20 @@ public class GameManager : MonoBehaviour
 
         targetCamera.orthographic = true;
 
-        Vector3 boardCenter = centerBoardAtOrigin
-            ? boardOrigin
-            : boardOrigin + new Vector3((width - 1) * cellSize * 0.5f, (height - 1) * cellSize * 0.5f, 0f);
+        Rect localBounds = GetBoardLocalBounds();
+        Vector3 boardCenter = localBounds.center;
 
         Vector3 worldCenter = transform.TransformPoint(boardCenter);
         targetCamera.transform.position = new Vector3(worldCenter.x, worldCenter.y, targetCamera.transform.position.z);
 
+        Bounds boardBounds = GetBoardWorldBounds();
         float aspect = Mathf.Max(0.01f, targetCamera.aspect);
-        float verticalSize = height * cellSize * 0.55f + cellSize;
-        float horizontalSize = width * cellSize * 0.55f / aspect + cellSize;
+        float cellWorldSize = Mathf.Max(
+            boardBounds.size.x / Mathf.Max(1, width),
+            boardBounds.size.y / Mathf.Max(1, height));
+        float boardPadding = cellWorldSize * 1.5f + Mathf.Max(boardBounds.size.x, boardBounds.size.y) * 0.1f;
+        float verticalSize = boardBounds.size.y * 0.5f + boardPadding;
+        float horizontalSize = boardBounds.size.x * 0.5f / aspect + boardPadding;
         targetCamera.orthographicSize = Mathf.Max(verticalSize, horizontalSize);
     }
 
@@ -780,6 +1197,12 @@ public class GameManager : MonoBehaviour
         {
             for (int x = 0; x < drawWidth; x++)
             {
+                Vector2Int cell = new Vector2Int(x, y);
+                if (hasCustomBoardShape && !activeBoardCells.Contains(cell))
+                {
+                    continue;
+                }
+
                 Vector3 position = boardOrigin + new Vector3(x * cellSize, y * cellSize, 0f);
 
                 if (centerBoardAtOrigin)

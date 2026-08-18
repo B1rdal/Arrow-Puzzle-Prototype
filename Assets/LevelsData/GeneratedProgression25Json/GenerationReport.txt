@@ -1,0 +1,35 @@
+Generated Progressive Batch 30
+Generated: 2026-07-19 21:28:23
+Difficulty checkpoints: levels 5, 10, 15, 20, 25, and 30.
+Coverage target: 100% of every active board cell.
+
+01. Level_01_6x6_Rectangle: 6x6 Rectangle, 12 arrows, 36/36 cells (100.0 %), waves 9, widest 2, >2 waves 0, initial 2, avg turns 0.75, longest 4, seed preserved.
+02. Level_02_7x7_Rectangle: 7x7 Rectangle, 15 arrows, 49/49 cells (100.0 %), waves 11, widest 2, >2 waves 0, initial 2, avg turns 0.67, longest 5, seed preserved.
+03. Level_03_8x8_Beveled: 8x8 Beveled, 18 arrows, 60/60 cells (100.0 %), waves 12, widest 4, >2 waves 1, initial 4, avg turns 0.67, longest 5, seed preserved.
+04. Level_04_9x9_Rectangle: 9x9 Rectangle, 22 arrows, 81/81 cells (100.0 %), waves 15, widest 3, >2 waves 2, initial 3, avg turns 0.77, longest 6, seed preserved.
+05. Level_05_11x10_Rectangle [SPIKE]: 11x10 Rectangle, 30 arrows, 110/110 cells (100.0 %), waves 20, widest 4, >2 waves 2, initial 4, avg turns 0.73, longest 7, seed preserved.
+06. Level_06_11x11_Rectangle: 11x11 Rectangle, 28 arrows, 121/121 cells (100.0 %), waves 18, widest 4, >2 waves 1, initial 4, avg turns 1.07, longest 7, seed preserved.
+07. Level_07_13x12_Cross: 13x12 Cross, 19 arrows, 92/92 cells (100.0 %), waves 10, widest 5, >2 waves 1, initial 5, avg turns 1.26, longest 8, seed preserved.
+08. Level_08_12x12_Rectangle: 12x12 Rectangle, 28 arrows, 144/144 cells (100.0 %), waves 17, widest 4, >2 waves 3, initial 4, avg turns 1.50, longest 8, seed preserved.
+09. Level_09_15x14_Heart: 15x14 Heart, 41 arrows, 178/178 cells (100.0 %), waves 18, widest 5, >2 waves 8, initial 5, avg turns 1.22, longest 9, seed preserved.
+10. Level_10_16x14_Hexagon [SPIKE]: 16x14 Hexagon, 46 arrows, 212/212 cells (100.0 %), waves 23, widest 6, >2 waves 5, initial 6, avg turns 1.15, longest 10, seed preserved.
+11. Level_11_15x15_Rectangle: 15x15 Rectangle, 43 arrows, 225/225 cells (100.0 %), waves 30, widest 3, >2 waves 2, initial 3, avg turns 1.47, longest 10, seed preserved.
+12. Level_12_17x16_Hourglass: 17x16 Hourglass, 40 arrows, 208/208 cells (100.0 %), waves 22, widest 5, >2 waves 3, initial 2, avg turns 1.35, longest 11, seed preserved.
+13. Level_13_16x16_Rectangle: 16x16 Rectangle, 45 arrows, 256/256 cells (100.0 %), waves 20, widest 6, >2 waves 6, initial 2, avg turns 1.56, longest 11, seed preserved.
+14. Level_14_18x17_Shield: 18x17 Shield, 35 arrows, 202/202 cells (100.0 %), waves 19, widest 6, >2 waves 2, initial 6, avg turns 1.49, longest 12, seed preserved.
+15. Level_15_20x18_Rectangle [SPIKE]: 20x18 Rectangle, 63 arrows, 360/360 cells (100.0 %), waves 30, widest 6, >2 waves 8, initial 4, avg turns 1.70, longest 13, seed preserved.
+16. Level_16_19x19_Rectangle: 19x19 Rectangle, 61 arrows, 361/361 cells (100.0 %), waves 25, widest 5, >2 waves 11, initial 4, avg turns 1.36, longest 13, seed preserved.
+17. Level_17_21x20_Beveled: 21x20 Beveled, 66 arrows, 396/396 cells (100.0 %), waves 26, widest 9, >2 waves 12, initial 9, avg turns 1.45, longest 14, seed preserved.
+18. Level_18_20x20_Rectangle: 20x20 Rectangle, 69 arrows, 400/400 cells (100.0 %), waves 26, widest 7, >2 waves 11, initial 4, avg turns 1.51, longest 13, seed preserved.
+19. Level_19_23x22_Clover: 23x22 Clover, 52 arrows, 310/310 cells (100.0 %), waves 20, widest 10, >2 waves 6, initial 10, avg turns 1.58, longest 15, seed preserved.
+20. Level_20_24x22_Rectangle [SPIKE]: 24x22 Rectangle, 78 arrows, 528/528 cells (100.0 %), waves 37, widest 5, >2 waves 14, initial 2, avg turns 1.73, longest 15, seed preserved.
+21. Level_21_23x23_Rectangle: 23x23 Rectangle, 86 arrows, 529/529 cells (100.0 %), waves 43, widest 5, >2 waves 13, initial 3, avg turns 1.56, longest 15, seed preserved.
+22. Level_22_26x24_Heart: 26x24 Heart, 76 arrows, 536/536 cells (100.0 %), waves 29, widest 9, >2 waves 13, initial 9, avg turns 1.68, longest 16, seed preserved.
+23. Level_23_24x24_Rectangle: 24x24 Rectangle, 89 arrows, 576/576 cells (100.0 %), waves 37, widest 6, >2 waves 14, initial 4, avg turns 1.51, longest 16, seed preserved.
+24. Level_24_26x25_Rectangle: 26x25 Rectangle, 89 arrows, 650/650 cells (100.0 %), waves 38, widest 5, >2 waves 16, initial 3, avg turns 1.76, longest 17, seed preserved.
+25. Level_25_28x26_Rectangle [SPIKE]: 28x26 Rectangle, 103 arrows, 728/728 cells (100.0 %), waves 38, widest 5, >2 waves 21, initial 4, avg turns 1.50, longest 18, seed preserved.
+26. Level_26_29x27_Rectangle: 29x27 Rectangle, 106 arrows, 783/783 cells (100.0 %), waves 42, widest 6, >2 waves 19, initial 4, avg turns 1.67, longest 18, seed preserved.
+27. Level_27_30x28_Rectangle: 30x28 Rectangle, 118 arrows, 840/840 cells (100.0 %), waves 54, widest 5, >2 waves 21, initial 3, avg turns 1.48, longest 19, seed preserved.
+28. Level_28_30x30_Rectangle: 30x30 Rectangle, 119 arrows, 900/900 cells (100.0 %), waves 51, widest 6, >2 waves 21, initial 4, avg turns 1.67, longest 20, seed preserved.
+29. Level_29_32x30_Rectangle: 32x30 Rectangle, 125 arrows, 960/960 cells (100.0 %), waves 63, widest 5, >2 waves 19, initial 4, avg turns 1.52, longest 21, seed preserved.
+30. Level_30_33x30_Rectangle [SPIKE]: 33x30 Rectangle, 125 arrows, 990/990 cells (100.0 %), waves 49, widest 6, >2 waves 21, initial 3, avg turns 1.66, longest 22, seed 57190.

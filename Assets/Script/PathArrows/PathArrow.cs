@@ -40,20 +40,37 @@ public class PathArrow : MonoBehaviour
     [Range(0f, 1f)]
     [SerializeField] private float previewBeamAlpha = 0.24f;
 
+    [Header("Mobile Input")]
+    [Min(0f)]
+    [SerializeField] private float touchHoldHitRadiusPixels = 44f;
+    [Min(0f)]
+    [SerializeField] private float mouseHoldHitRadiusPixels = 8f;
+    [Min(0f)]
+    [SerializeField] private float touchHoldCancelDistancePixels = 80f;
+    [Min(0f)]
+    [SerializeField] private float mouseHoldCancelDistancePixels = 22f;
+
     private readonly List<Vector2Int> occupiedCells = new List<Vector2Int>();
 
     private GameManager manager;
     private PathArrowAnimation pathAnimation;
     private PathArrowSegmentColliderSpawner2D colliderSpawner;
+    private PathArrowBodyMeshRenderer bodyMeshRenderer;
     private PathArrowStyleData styleData;
     private Material runtimeMaterial;
+    private MeshFilter headMeshFilter;
     private Material headMaterial;
     private LineRenderer previewBeamRenderer;
     private Material previewBeamMaterial;
+    private Vector3[] startingLocalPositions;
     private Color normalColor = Color.white;
+    private Color movingColor = new Color(0.15f, 0.9f, 0.35f, 1f);
+    private Color activeVisualColor = Color.white;
     private Coroutine feedbackRoutine;
     private Coroutine escapeCompletedRoutine;
     private Coroutine pressRoutine;
+    private Vector3 blockedFeedbackBaseLocalPosition;
+    private bool hasBlockedFeedbackBaseLocalPosition;
     private Rect boardExitBounds;
     private float outsideGridMargin = 0.5f;
     private float outsideGridFadeDelay = 1f;
@@ -77,6 +94,7 @@ public class PathArrow : MonoBehaviour
     public Vector2Int ExitGridDirection { get; private set; }
     public IReadOnlyList<Vector2Int> OccupiedCells => occupiedCells;
     public bool IsAnimating => pathAnimation != null && pathAnimation.IsPlaying;
+    public bool CanStartPress => isActiveAndEnabled && !PauseMenuUI.IsGamePaused && inputEnabled && manager != null && !IsAnimating;
     public static bool IsAnyArrowHeld => activeHoldPreviewCount > 0;
 
     // Called by GameManager after level data is validated and converted to local positions.
@@ -103,6 +121,7 @@ public class PathArrow : MonoBehaviour
         ApplyStyleData();
         Id = id;
         normalColor = color;
+        activeVisualColor = normalColor;
         inputEnabled = true;
         baseLineThickness = Mathf.Max(0.01f, lineThickness);
         headSize = Mathf.Max(0.2f, lineThickness * headSizeMultiplier);
@@ -119,11 +138,14 @@ public class PathArrow : MonoBehaviour
 
         occupiedCells.Clear();
         occupiedCells.AddRange(cells);
+        startingLocalPositions = new Vector3[localPositions.Length];
+        localPositions.CopyTo(startingLocalPositions, 0);
 
         HeadGridPosition = gridPoints[gridPoints.Count - 1];
         ExitGridDirection = PathArrowUtility.GetExitDirection(gridPoints);
 
         EnsureLineRenderer(lineThickness);
+        EnsureBodyMeshRenderer(lineThickness);
         EnsureAnimation(moveSpeed);
         EnsureColliderSpawner(lineThickness);
         EnsureHead();
@@ -132,13 +154,76 @@ public class PathArrow : MonoBehaviour
         lineRenderer.positionCount = localPositions.Length;
         lineRenderer.SetPositions(localPositions);
         ApplyRestingVisualState();
+        bodyMeshRenderer.Refresh();
         colliderSpawner.UpdateSegments();
         UpdateHeadPose();
     }
 
+    public void ForceVisualRefresh(bool restoreStartingShape)
+    {
+        if (lineRenderer == null)
+        {
+            return;
+        }
+
+        if (restoreStartingShape && !IsAnimating && startingLocalPositions != null && startingLocalPositions.Length >= 2)
+        {
+            lineRenderer.positionCount = startingLocalPositions.Length;
+            lineRenderer.SetPositions(startingLocalPositions);
+        }
+
+        float widthMultiplier = holdPreviewActive ? holdLineWidthMultiplier : 1f;
+        lineRenderer.startWidth = baseLineThickness * widthMultiplier;
+        lineRenderer.endWidth = baseLineThickness * widthMultiplier;
+
+        if (bodyMeshRenderer != null)
+        {
+            bodyMeshRenderer.Refresh();
+        }
+
+        if (headMeshFilter != null)
+        {
+            Mesh oldMesh = headMeshFilter.sharedMesh;
+            headMeshFilter.sharedMesh = CreateHeadMesh();
+
+            if (Application.isPlaying && oldMesh != null)
+            {
+                Destroy(oldMesh);
+            }
+        }
+
+        ApplyHeadScale();
+        ApplyRestingVisualState();
+        UpdateHeadPose();
+
+        if (collidersEnabled && colliderSpawner != null)
+        {
+            colliderSpawner.UpdateSegments();
+        }
+
+        // Some mobile GPUs keep first-frame renderer data briefly; resubmitting fixes stale startup visuals.
+        lineRenderer.enabled = false;
+
+        if (bodyMeshRenderer != null)
+        {
+            bodyMeshRenderer.ForceRendererRefresh();
+        }
+
+        if (headRenderer != null)
+        {
+            headRenderer.enabled = false;
+            headRenderer.enabled = true;
+        }
+    }
+
     public void HandlePressStarted()
     {
-        if (PauseMenuUI.IsGamePaused || !inputEnabled || manager == null || IsAnimating)
+        HandlePressStarted(-1, false, Input.mousePosition);
+    }
+
+    public void HandlePressStarted(int pointerId, bool isTouch, Vector2 screenPosition)
+    {
+        if (!CanStartPress)
         {
             return;
         }
@@ -148,18 +233,36 @@ public class PathArrow : MonoBehaviour
             StopCoroutine(pressRoutine);
         }
 
-        pressRoutine = StartCoroutine(PressRoutine());
+        pressRoutine = StartCoroutine(PressRoutine(pointerId, isTouch, screenPosition));
     }
 
     public void PlayEscape()
     {
         inputEnabled = false;
+        collidersEnabled = false;
+
+        if (feedbackRoutine != null)
+        {
+            StopCoroutine(feedbackRoutine);
+            feedbackRoutine = null;
+
+            if (hasBlockedFeedbackBaseLocalPosition)
+            {
+                transform.localPosition = blockedFeedbackBaseLocalPosition;
+            }
+
+            hasBlockedFeedbackBaseLocalPosition = false;
+        }
+
         CancelHoldPreview();
+        ClearEscapeColliders();
 
         if (pathAnimation == null)
         {
             return;
         }
+
+        SetColor(movingColor);
 
         pathAnimation.PlayForward(
             new Vector3(ExitGridDirection.x, ExitGridDirection.y, 0f),
@@ -177,6 +280,15 @@ public class PathArrow : MonoBehaviour
         if (feedbackRoutine != null)
         {
             StopCoroutine(feedbackRoutine);
+
+            if (hasBlockedFeedbackBaseLocalPosition)
+            {
+                transform.localPosition = blockedFeedbackBaseLocalPosition;
+            }
+
+            hasBlockedFeedbackBaseLocalPosition = false;
+            ApplyRestingVisualState();
+            feedbackRoutine = null;
         }
 
         feedbackRoutine = StartCoroutine(BlockedFeedbackRoutine());
@@ -192,38 +304,38 @@ public class PathArrow : MonoBehaviour
         }
     }
 
-    private IEnumerator PressRoutine()
+    private IEnumerator PressRoutine(int pointerId, bool isTouch, Vector2 startScreenPosition)
     {
         bool shouldActivateOnRelease = true;
+        Vector2 currentScreenPosition = startScreenPosition;
         SetHoldPreview(true);
 
-        while (Input.GetMouseButton(0))
+        while (TryGetPointerState(pointerId, isTouch, out currentScreenPosition, out bool isPressed, out bool isCanceled))
         {
-            if (PauseMenuUI.IsGamePaused)
+            if (isCanceled || PauseMenuUI.IsGamePaused)
             {
                 shouldActivateOnRelease = false;
                 SetHoldPreview(false);
                 break;
             }
 
-            if (!IsPointerOverThisArrow())
+            if (!IsPointerStillValidForPress(currentScreenPosition, startScreenPosition, isTouch))
             {
-                // Leaving the arrow cancels this press; releasing over another arrow should not trigger it.
+                // A large drag away cancels this press; small thumb drift is still accepted.
                 shouldActivateOnRelease = false;
                 SetHoldPreview(false);
+                break;
+            }
 
-                while (Input.GetMouseButton(0))
-                {
-                    yield return null;
-                }
-
+            if (!isPressed)
+            {
                 break;
             }
 
             yield return null;
         }
 
-        if (shouldActivateOnRelease && !IsPointerOverThisArrow())
+        if (shouldActivateOnRelease && !IsPointerStillValidForPress(currentScreenPosition, startScreenPosition, isTouch))
         {
             // Final release-position check catches fast drags that leave on the same frame as release.
             shouldActivateOnRelease = false;
@@ -264,10 +376,14 @@ public class PathArrow : MonoBehaviour
             lineRenderer.endWidth = baseLineThickness * widthMultiplier;
         }
 
+        if (bodyMeshRenderer != null)
+        {
+            bodyMeshRenderer.Refresh();
+        }
+
         if (headTransform != null)
         {
-            float scaleMultiplier = holdPreviewActive ? holdHeadScaleMultiplier : 1f;
-            headTransform.localScale = Vector3.one * headSize * scaleMultiplier;
+            ApplyHeadScale();
         }
 
         if (holdPreviewActive)
@@ -282,6 +398,41 @@ public class PathArrow : MonoBehaviour
         }
     }
 
+    private static bool TryGetPointerState(int pointerId, bool isTouch, out Vector2 screenPosition, out bool isPressed, out bool isCanceled)
+    {
+        screenPosition = Input.mousePosition;
+        isPressed = false;
+        isCanceled = false;
+
+        if (!isTouch)
+        {
+            if (!Input.GetMouseButton(0) && !Input.GetMouseButtonUp(0))
+            {
+                return false;
+            }
+
+            isPressed = Input.GetMouseButton(0);
+            return true;
+        }
+
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+
+            if (touch.fingerId != pointerId)
+            {
+                continue;
+            }
+
+            screenPosition = touch.position;
+            isCanceled = touch.phase == TouchPhase.Canceled;
+            isPressed = touch.phase != TouchPhase.Ended && touch.phase != TouchPhase.Canceled;
+            return true;
+        }
+
+        return false;
+    }
+
     private void CancelHoldPreview()
     {
         if (pressRoutine != null)
@@ -293,9 +444,22 @@ public class PathArrow : MonoBehaviour
         SetHoldPreview(false);
     }
 
+    private void ApplyHeadScale()
+    {
+        if (headTransform == null)
+        {
+            return;
+        }
+
+        float scaleMultiplier = holdPreviewActive ? holdHeadScaleMultiplier : 1f;
+        headTransform.localScale = Vector3.one * headSize * scaleMultiplier;
+    }
+
     private IEnumerator BlockedFeedbackRoutine()
     {
         Vector3 startPosition = transform.localPosition;
+        blockedFeedbackBaseLocalPosition = startPosition;
+        hasBlockedFeedbackBaseLocalPosition = true;
         Vector3 exitDirection = new Vector3(ExitGridDirection.x, ExitGridDirection.y, 0f);
 
         if (exitDirection.sqrMagnitude <= 0.0001f)
@@ -305,19 +469,38 @@ public class PathArrow : MonoBehaviour
 
         SetColor(blockedColor);
         float elapsed = 0f;
+        Vector3 direction = exitDirection.normalized;
+        Vector3 pushedPosition = startPosition + direction * blockedShakeDistance;
+        float safeDuration = Mathf.Max(0.01f, blockedFeedbackDuration);
+        float pushDuration = safeDuration * 0.35f;
+        float returnDuration = Mathf.Max(0.01f, safeDuration - pushDuration);
 
-        // Nudge in the exit direction so blocked feedback reads as "trying to move."
-        while (elapsed < blockedFeedbackDuration)
+        // Wrong moves lunge forward first so the player sees which way the arrow tried to escape.
+        while (elapsed < pushDuration)
         {
-            float progress = elapsed / blockedFeedbackDuration;
-            float strength = 1f - progress;
-            float offset = Mathf.Sin(progress * Mathf.PI * 8f) * blockedShakeDistance * strength;
-            transform.localPosition = startPosition + exitDirection.normalized * offset;
+            float progress = Mathf.Clamp01(elapsed / pushDuration);
+            float eased = 1f - Mathf.Pow(1f - progress, 3f);
+            transform.localPosition = Vector3.LerpUnclamped(startPosition, pushedPosition, eased);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        elapsed = 0f;
+
+        // Then it snaps back quickly, with a tiny overshoot to make the blocked move feel punchy.
+        while (elapsed < returnDuration)
+        {
+            float progress = Mathf.Clamp01(elapsed / returnDuration);
+            float remainingForward = 1f - Mathf.Pow(progress, 0.32f);
+            float overshoot = -Mathf.Sin(progress * Mathf.PI) * 0.12f * (1f - progress);
+            float offset = blockedShakeDistance * (remainingForward + overshoot);
+            transform.localPosition = startPosition + direction * offset;
             elapsed += Time.deltaTime;
             yield return null;
         }
 
         transform.localPosition = startPosition;
+        hasBlockedFeedbackBaseLocalPosition = false;
         ApplyRestingVisualState();
         feedbackRoutine = null;
     }
@@ -341,9 +524,25 @@ public class PathArrow : MonoBehaviour
             runtimeMaterial = CreateUnlitColorMaterial();
         }
 
-        // Keep the line material white so LineRenderer vertex color controls the final arrow color.
+        // The LineRenderer now acts as hidden path data. The mesh body draws the visible arrow.
         SetMaterialColor(runtimeMaterial, Color.white);
         lineRenderer.material = runtimeMaterial;
+        lineRenderer.enabled = false;
+    }
+
+    private void EnsureBodyMeshRenderer(float lineThickness)
+    {
+        if (bodyMeshRenderer == null)
+        {
+            bodyMeshRenderer = GetComponent<PathArrowBodyMeshRenderer>();
+        }
+
+        if (bodyMeshRenderer == null)
+        {
+            bodyMeshRenderer = gameObject.AddComponent<PathArrowBodyMeshRenderer>();
+        }
+
+        bodyMeshRenderer.Initialize(lineRenderer, runtimeMaterial, lineThickness);
     }
 
     private void EnsureAnimation(float moveSpeed)
@@ -397,14 +596,14 @@ public class PathArrow : MonoBehaviour
             headTransform = headObject.transform;
         }
 
-        MeshFilter meshFilter = headTransform.GetComponent<MeshFilter>();
-        if (meshFilter == null)
+        headMeshFilter = headTransform.GetComponent<MeshFilter>();
+        if (headMeshFilter == null)
         {
-            meshFilter = headTransform.gameObject.AddComponent<MeshFilter>();
+            headMeshFilter = headTransform.gameObject.AddComponent<MeshFilter>();
         }
 
         // Generated from style data so the same level can reuse different arrow head shapes.
-        meshFilter.sharedMesh = CreateHeadMesh();
+        headMeshFilter.sharedMesh = CreateHeadMesh();
 
         if (headRenderer == null)
         {
@@ -429,6 +628,7 @@ public class PathArrow : MonoBehaviour
             headCollider = headTransform.gameObject.AddComponent<CircleCollider2D>();
         }
 
+        headCollider.enabled = true;
         headCollider.isTrigger = true;
         headCollider.radius = 0.4f;
 
@@ -439,7 +639,7 @@ public class PathArrow : MonoBehaviour
         }
 
         proxy.Initialize(this);
-        headTransform.localScale = Vector3.one * headSize;
+        ApplyHeadScale();
     }
 
     private void EnsurePreviewBeam()
@@ -470,6 +670,11 @@ public class PathArrow : MonoBehaviour
 
     private void HandlePositionsChanged()
     {
+        if (bodyMeshRenderer != null)
+        {
+            bodyMeshRenderer.Refresh();
+        }
+
         if (collidersEnabled && colliderSpawner != null)
         {
             colliderSpawner.UpdateSegments();
@@ -488,21 +693,27 @@ public class PathArrow : MonoBehaviour
         escapeCompletedRoutine = StartCoroutine(EscapeCompletedRoutine());
     }
 
-    private IEnumerator EscapeCompletedRoutine()
+    private void ClearEscapeColliders()
     {
-        // Once fading starts the arrow should no longer receive clicks.
-        collidersEnabled = false;
-
         if (colliderSpawner != null)
         {
             colliderSpawner.ClearSegments();
         }
 
         Collider2D headCollider = headTransform != null ? headTransform.GetComponent<Collider2D>() : null;
+
         if (headCollider != null)
         {
             headCollider.enabled = false;
         }
+    }
+
+    private IEnumerator EscapeCompletedRoutine()
+    {
+        // Once fading starts the arrow should no longer receive clicks.
+        collidersEnabled = false;
+
+        ClearEscapeColliders();
 
         if (outsideGridFadeDelay > 0f)
         {
@@ -515,8 +726,8 @@ public class PathArrow : MonoBehaviour
             }
         }
 
-        Color startColor = normalColor;
-        Color endColor = normalColor;
+        Color startColor = activeVisualColor;
+        Color endColor = activeVisualColor;
         endColor.a = 0f;
         float elapsed = 0f;
 
@@ -572,12 +783,15 @@ public class PathArrow : MonoBehaviour
 
     private void SetColor(Color color)
     {
+        activeVisualColor = color;
+
         if (lineRenderer != null)
         {
             lineRenderer.startColor = color;
             lineRenderer.endColor = color;
         }
 
+        SetMaterialColor(runtimeMaterial, color);
         SetMaterialColor(headMaterial, color);
     }
 
@@ -648,6 +862,7 @@ public class PathArrow : MonoBehaviour
 
         // Copy values from the asset once when this runtime arrow is built.
         blockedColor = styleData.BlockedColor;
+        movingColor = styleData.MovingColor;
         holdHighlightColor = styleData.HoldHighlightColor;
         holdHighlightWhiteness = styleData.HoldHighlightBlend;
         blockedShakeDistance = styleData.BlockedShakeDistance;
@@ -671,7 +886,18 @@ public class PathArrow : MonoBehaviour
         }
     }
 
-    private bool IsPointerOverThisArrow()
+    private bool IsPointerStillValidForPress(Vector2 currentScreenPosition, Vector2 startScreenPosition, bool isTouch)
+    {
+        if (IsPointerOverThisArrow(currentScreenPosition, isTouch))
+        {
+            return true;
+        }
+
+        float cancelDistance = isTouch ? touchHoldCancelDistancePixels : mouseHoldCancelDistancePixels;
+        return (currentScreenPosition - startScreenPosition).sqrMagnitude <= cancelDistance * cancelDistance;
+    }
+
+    private bool IsPointerOverThisArrow(Vector2 screenPosition, bool isTouch)
     {
         Camera targetCamera = Camera.main;
 
@@ -680,21 +906,8 @@ public class PathArrow : MonoBehaviour
             return true;
         }
 
-        Vector3 worldPosition = targetCamera.ScreenToWorldPoint(Input.mousePosition);
-        Collider2D[] hits = Physics2D.OverlapPointAll(worldPosition);
-
-        // Any generated segment collider or head collider owned by this arrow keeps the press valid.
-        for (int i = 0; i < hits.Length; i++)
-        {
-            PathArrowColliderProxy proxy = hits[i].GetComponent<PathArrowColliderProxy>();
-
-            if (proxy != null && proxy.Owner == this)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        float hitRadius = isTouch ? touchHoldHitRadiusPixels : mouseHoldHitRadiusPixels;
+        return PathArrowInputUtility.IsScreenPositionOverArrow(targetCamera, screenPosition, this, hitRadius);
     }
 
     private Mesh CreateHeadMesh()

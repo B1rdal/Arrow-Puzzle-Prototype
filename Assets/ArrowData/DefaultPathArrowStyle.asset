@@ -12,13 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f0f70a30e88242a4ba4c7fd4dc1c38f5, type: 3}
   m_Name: DefaultPathArrowStyle
   m_EditorClassIdentifier: 
-  arrowColor: {r: 0.084549636, g: 0.5432007, b: 0.9433962, a: 1}
+  arrowColor: {r: 0, g: 0, b: 0, a: 1}
+  movingColor: {r: 0.15, g: 0.9, b: 0.35, a: 1}
   blockedColor: {r: 1, g: 0.25, b: 0.2, a: 1}
-  holdHighlightColor: {r: 1, g: 1, b: 1, a: 1}
-  holdHighlightBlend: 0.35
+  holdHighlightColor: {r: 0, g: 0.73029184, b: 1, a: 1}
+  holdHighlightBlend: 1
   blockedShakeDistance: 0.08
   blockedFeedbackDuration: 0.18
-  headSizeMultiplier: 2.2
+  headSizeMultiplier: 2.75
   headTipLength: 0.56
   headBaseBackLength: 0.22
   headHalfWidth: 0.5

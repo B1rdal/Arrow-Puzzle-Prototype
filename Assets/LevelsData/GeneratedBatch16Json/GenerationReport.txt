@@ -1,0 +1,19 @@
+Generated Batch 16
+Generated: 2026-07-16 15:46:18
+
+Level_01_6x6_Rectangle: 6x6, 11 arrows, 36/36 cells (100.0%), routes 1-2, U 9.1%, seed 1103, length 2-4, min/max weight 75/25.
+Level_02_7x7_Rectangle: 7x7, 13 arrows, 49/49 cells (100.0%), routes 2-2, U 7.7%, seed 2207, length 2-5, min/max weight 70/30.
+Level_03_8x8_Rectangle: 8x8, 15 arrows, 64/64 cells (100.0%), routes 2-2, U 13.3%, seed 11220, length 2-6, min/max weight 65/35.
+Level_04_9x9_Diamond: 9x9, 12 arrows, 40/41 cells (97.6%), routes 5-5, U 0.0%, seed 12328, length 2-6, min/max weight 62/38.
+Level_05_10x8_Wide: 10x8, 18 arrows, 80/80 cells (100.0%), routes 2-3, U 11.1%, seed 5519, length 2-7, min/max weight 58/42.
+Level_06_11x11_Cross: 11x11, 13 arrows, 57/57 cells (100.0%), routes 2-2, U 15.4%, seed 6619, length 2-8, min/max weight 55/45.
+Level_07_11x11_Rectangle: 11x11, 24 arrows, 121/121 cells (100.0%), routes 3-3, U 12.5%, seed 23561, length 2-9, min/max weight 52/48.
+Level_08_13x11_Heart: 13x11, 24 arrows, 97/97 cells (100.0%), routes 6-6, U 4.2%, seed 16750, length 2-9, min/max weight 50/50.
+Level_09_13x10_Wide: 13x10, 22 arrows, 130/130 cells (100.0%), routes 2-3, U 13.6%, seed 9941, length 2-10, min/max weight 47/53.
+Level_10_14x12_Hexagon: 14x12, 26 arrows, 128/128 cells (100.0%), routes 5-5, U 3.8%, seed 11047, length 2-11, min/max weight 44/56.
+Level_11_14x14_Rectangle: 14x14, 33 arrows, 196/196 cells (100.0%), routes 2-4, U 9.1%, seed 12157, length 2-12, min/max weight 42/58.
+Level_12_15x15_Hourglass: 15x15, 28 arrows, 129/129 cells (100.0%), routes 7-8, U 3.6%, seed 13267, length 2-12, min/max weight 40/60.
+Level_13_16x16_Shield: 16x16, 31 arrows, 160/160 cells (100.0%), routes 5-5, U 6.5%, seed 14369, length 2-13, min/max weight 36/64.
+Level_14_17x17_Diamond: 17x17, 29 arrows, 145/145 cells (100.0%), routes 12-12, U 3.4%, seed 15473, length 2-14, min/max weight 33/67.
+Level_15_18x16_Rectangle: 18x16, 49 arrows, 288/288 cells (100.0%), routes 3-5, U 10.2%, seed 16573, length 2-15, min/max weight 28/72.
+Level_16_19x19_Clover: 19x19, 37 arrows, 221/221 cells (100.0%), routes 7-7, U 5.4%, seed 41438, length 2-15, min/max weight 22/78.
